@@ -1,0 +1,10 @@
+flask
+pandas
+numpy
+scipy
+scikit-learn
+fairlearn
+plotly
+google-generativeai
+supabase
+python-dotenv
