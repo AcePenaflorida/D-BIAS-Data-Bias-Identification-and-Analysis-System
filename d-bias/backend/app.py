@@ -8,6 +8,7 @@ import os
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
 from gemini_connector import GeminiConnector
+from bias_mapper import map_biases
 from visualization import visualize_fairness_dashboard
 from preprocessing import load_and_preprocess, validate_dataset
 
@@ -208,6 +209,14 @@ def analyze():
         "dataset_summary": reporter.summary(),
         "reliability": reporter.reliability()
     }
+    # Map AI explanations to each bias entry (returns grouped structure). If no AI summary
+    # was generated, map_biases will still return a structure (ai_explanation may be None).
+    try:
+        mapped = map_biases(bias_report, summary_text)
+        response["mapped_biases"] = mapped
+    except Exception as e:
+        # don't fail the whole endpoint if mapping errors; include an error note
+        response["mapped_biases_error"] = str(e)
     if plots_payload is not None:
         response["plots"] = plots_payload
 
