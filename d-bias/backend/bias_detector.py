@@ -433,10 +433,12 @@ class BiasReporter:
 
         High severity issues subtract 10, moderate subtract 5. If no issues, return 95 by default.
         """
-        if not self.bias_report:
-            return 95
+        # Start from a perfect score and subtract penalties from issues and dataset quality
+        base = 100
         penalties = 0
-        for b in self.bias_report:
+
+        # 1) Penalties from detected bias issues (existing behavior)
+        for b in (self.bias_report or []):
             sev = b.get("Severity") or b.get("severity") or ""
             try:
                 sev_s = str(sev).strip().lower()
@@ -446,7 +448,88 @@ class BiasReporter:
                 penalties += 10
             else:
                 penalties += 5
-        return max(0, 100 - penalties)
+
+        # 2) Dataset-level penalties to account for reliability and representativeness
+        try:
+            n = len(self.df)
+        except Exception:
+            n = 0
+
+        # sample size: very small datasets are less reliable
+        if n > 0:
+            if n < 50:
+                penalties += 15
+            elif n < 200:
+                penalties += 8
+            elif n < 1000:
+                penalties += 4
+
+        # overall missingness
+        try:
+            missing_mean = float(self.df.isna().mean().mean())
+            if missing_mean > 0.25:
+                penalties += 15
+            elif missing_mean > 0.1:
+                penalties += 7
+        except Exception:
+            pass
+
+        # columns with extreme missingness (>50%)
+        try:
+            high_missing_cols = [c for c in self.df.columns if float(self.df[c].isna().mean()) > 0.5]
+            if high_missing_cols:
+                # scale penalty but cap it to avoid blowing out the score
+                penalties += min(15, 5 * len(high_missing_cols))
+        except Exception:
+            pass
+
+        # duplicate rows ratio
+        try:
+            dup_ratio = float(self.df.duplicated().mean())
+            if dup_ratio > 0.5:
+                penalties += 15
+            elif dup_ratio > 0.2:
+                penalties += 7
+        except Exception:
+            pass
+
+        # require at least one numeric and one categorical column by default - penalize if missing
+        try:
+            num_cols = self.df.select_dtypes(include=[np.number]).shape[1]
+            cat_cols = self.df.select_dtypes(include=[object, 'category']).shape[1]
+            if num_cols == 0 or cat_cols == 0:
+                penalties += 6
+        except Exception:
+            pass
+
+        # outlier-heavy columns: count numeric columns with high outlier ratio
+        try:
+            outlier_count = 0
+            for c in self.df.select_dtypes(include=[np.number]).columns:
+                col = self.df[c].dropna()
+                if col.nunique() <= 10:
+                    continue
+                q1, q3 = np.percentile(col, [25, 75])
+                iqr = q3 - q1
+                if iqr == 0:
+                    continue
+                lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+                outlier_ratio = float(((col < lower) | (col > upper)).mean())
+                if outlier_ratio > 0.15:
+                    outlier_count += 1
+            if outlier_count:
+                penalties += min(12, 4 * outlier_count)
+        except Exception:
+            pass
+
+        # Cap penalties to ensure we return a meaningful score
+        score = max(0, base - penalties)
+
+        # Small bias_report but otherwise clean dataset -> give a small boost
+        if (not self.bias_report or len(self.bias_report) == 0) and score > 95:
+            score = 95
+
+        return int(score)
 
     def summary(self) -> str:
         """Return a concise, machine-friendly dataset fairness summary string.

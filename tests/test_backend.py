@@ -25,7 +25,7 @@ if response.status_code == 200:
     print(f"Fairness Score: {data.get('fairness_score')}")
 
     print("\n--- Bias Report ---")
-    print(json.dumps(data.get("bias_report"), indent=2))
+    print((data.get("bias_report") if data.get("bias_report") is not None else "No bias_report returned by backend."))
 
     print("\n--- Dataset Summary ---")
     print(data.get("dataset_summary", "No summary available."))
@@ -34,6 +34,42 @@ if response.status_code == 200:
 
     print("\n--- Gemini Summary ---")
     print(data.get("summary", "No AI summary generated."))
+    
+    # Display mapped biases (if backend produced them)
+    mapped = data.get("mapped_biases")
+    print("\n--- MAPPED BIASES ---")
+    print(mapped)
+    mapped_err = data.get("mapped_biases_error")
+    if mapped_err:
+        print("\n--- Mapping Error ---")
+        print(mapped_err)
+    # if mapped:
+    #     print("\n--- MAPPED BIASES ---")
+    #     try:
+    #         bias_types = mapped.get("bias_types", {})
+    #         for btype, items in bias_types.items():
+    #             print(f"\n== {btype} ==")
+    #             for it in items:
+    #                 feat = it.get("feature")
+    #                 sev = it.get("severity")
+    #                 desc = it.get("description")
+    #                 ai_ex = it.get("ai_explanation")
+    #                 print(f"- {feat} (Severity: {sev})")
+    #                 print(f"  Description: {desc}")
+    #                 if ai_ex:
+    #                     # print a short snippet to keep console readable
+    #                     snippet = ai_ex if len(ai_ex) < 800 else ai_ex[:800] + "..."
+    #                     print(f"  AI explanation: {snippet}")
+    #     except Exception as e:
+    #         print(f"Failed to pretty-print mapped_biases: {e}")
+
+        # print overall
+        overall = mapped.get("overall", {})
+        if overall:
+            print("\n--- MAPPED OVERALL ---")
+            print("Assessment:\n", overall.get("assessment") or "(none)")
+            print("\nFairness:\n", overall.get("fairness") or "(none)")
+            print("\nConclusion:\n", overall.get("conclusion") or "(none)")
     # Handle returned visualizations (if any)
     plots = data.get("plots")
     if plots:
