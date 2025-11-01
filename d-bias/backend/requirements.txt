@@ -8,3 +8,4 @@ plotly
 google-generativeai
 supabase
 python-dotenv
+kaleido

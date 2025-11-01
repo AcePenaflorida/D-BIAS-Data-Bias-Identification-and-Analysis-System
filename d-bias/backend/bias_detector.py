@@ -428,40 +428,89 @@ class BiasReporter:
     def __init__(self, df, bias_report):
         self.df = df
         self.bias_report = bias_report
+    def fairness_score(self) -> int:
+        """Return a deterministic integer fairness score (0-100).
 
-    def fairness_score(self):
+        High severity issues subtract 10, moderate subtract 5. If no issues, return 95 by default.
+        """
         if not self.bias_report:
             return 95
-        penalties = sum(10 if b.get("Severity", b.get("severity", "") ) == "High" else 5 for b in self.bias_report)
+        penalties = 0
+        for b in self.bias_report:
+            sev = b.get("Severity") or b.get("severity") or ""
+            try:
+                sev_s = str(sev).strip().lower()
+            except Exception:
+                sev_s = ""
+            if sev_s == "high":
+                penalties += 10
+            else:
+                penalties += 5
         return max(0, 100 - penalties)
+
+    def summary(self) -> str:
+        """Return a concise, machine-friendly dataset fairness summary string.
+
+        This is suitable for including in API responses (not the Gemini summary).
+        """
+        print("Hardcoded")
+        if not self.bias_report:
+            return "No major biases detected — dataset appears balanced and well-distributed."
+
+        lines = []
+        for b in self.bias_report:
+            typ = b.get("Type") or b.get("type") or "Issue"
+            feat = b.get("Feature") or b.get("feature") or ""
+            desc = b.get("Description") or b.get("description") or ""
+            sev = b.get("Severity") or b.get("severity") or ""
+            lines.append(f"[{typ}] {feat}: {desc} (Severity: {sev})")
+
+        # join with newlines but keep reasonably short
+        return "\n".join(lines)
+
+    def reliability(self) -> dict:
+        """Return machine-readable reliability info about the detection results.
+
+        Fields:
+          - n_rows: number of rows
+          - fairness_score: computed score
+          - reliability_level: one of 'low', 'moderate', 'high'
+          - message: human-friendly note
+        """
+        print("Hardcoded")
+        n = len(self.df)
+        score = self.fairness_score()
+        if n < 100:
+            level = "low"
+            note = "Dataset small — detection reliability limited."
+        elif n < 1000:
+            level = "moderate"
+            note = "Moderate dataset size — reliability good but not fully stable."
+        else:
+            level = "high"
+            note = "Large dataset — bias detection reliability is high."
+
+        # append advice based on score
+        if score > 85:
+            conclusion = "Dataset appears fair and balanced."
+        elif score > 60:
+            conclusion = "Some moderate biases detected — review recommended."
+        else:
+            conclusion = "High bias risk — dataset requires correction before modeling."
+
+        return {
+            "n_rows": int(n),
+            "fairness_score": int(score),
+            "reliability_level": level,
+            "message": f"{note} {conclusion}".strip()
+        }
 
     def print_summary(self):
         print("\n📘 DATASET FAIRNESS SUMMARY")
         print("=" * 80)
-        if not self.bias_report:
-            print("✅ No major biases detected — dataset appears balanced and well-distributed.")
-            return
-
-        summary_text = "\n".join([
-            f"- [{b.get('Type', b.get('type'))}] {b.get('Feature', b.get('feature', b.get('pair', '')))}: {b.get('Description', '')} (Severity: {b.get('Severity', b.get('severity', ''))})"
-            for b in self.bias_report
-        ])
-        print(textwrap.fill(summary_text, width=120))
+        print(textwrap.fill(self.summary(), width=120))
 
     def print_reliability(self):
-        n = len(self.df)
-        score = self.fairness_score()
-        print("\n💡 Fairness Reliability Score:", score, "/100")
-        if n < 100:
-            print("⚠️ Dataset small — detection reliability limited.")
-        elif n < 1000:
-            print("🟡 Moderate dataset size — reliability good but not fully stable.")
-        else:
-            print("🟢 Large dataset — bias detection reliability is high.")
-
-        if score > 85:
-            print("🟢 Dataset appears fair and balanced.")
-        elif score > 60:
-            print("🟡 Some moderate biases detected — review recommended.")
-        else:
-            print("🔴 High bias risk — dataset requires correction before modeling.")
+        info = self.reliability()
+        print("\n💡 Fairness Reliability Score:", info["fairness_score"], "/100")
+        print(info["message"]) 

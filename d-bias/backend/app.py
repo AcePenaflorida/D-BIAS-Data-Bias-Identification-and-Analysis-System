@@ -1,6 +1,7 @@
 # backend/app.py
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 import pandas as pd
+import numpy as np
 from dotenv import load_dotenv
 import os
 
@@ -8,12 +9,70 @@ import os
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
 from gemini_connector import GeminiConnector
 from visualization import visualize_fairness_dashboard
+from preprocessing import load_and_preprocess, validate_dataset
 
 # load .env
 load_dotenv()
 print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
+
+
+def make_json_serializable(obj):
+    """Recursively convert numpy / pandas types to native Python types for JSON.
+
+    - numpy.ndarray -> list
+    - numpy.generic -> Python scalar via .item()
+    - pandas.Timestamp -> ISO string
+    - pandas.Series/DataFrame -> lists/dicts
+    - bytes -> utf-8 decoded string
+    - fallback: str(obj)
+    """
+    # primitive types
+    if obj is None or isinstance(obj, (str, bool, int, float)):
+        return obj
+
+    # numpy types
+    if isinstance(obj, np.ndarray):
+        return make_json_serializable(obj.tolist())
+    if isinstance(obj, np.generic):
+        try:
+            return obj.item()
+        except Exception:
+            return str(obj)
+
+    # pandas types
+    try:
+        import pandas as _pd
+        if isinstance(obj, _pd.Timestamp):
+            return obj.isoformat()
+        if isinstance(obj, _pd.Series):
+            return make_json_serializable(obj.tolist())
+        if isinstance(obj, _pd.DataFrame):
+            return make_json_serializable(obj.to_dict(orient="records"))
+    except Exception:
+        pass
+
+    # dict / list / tuple
+    if isinstance(obj, dict):
+        return {str(k): make_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [make_json_serializable(v) for v in obj]
+
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8")
+        except Exception:
+            return str(obj)
+
+    # last resort
+    try:
+        # some objects may be serializable directly
+        import json
+        json.dumps(obj)
+        return obj
+    except Exception:
+        return str(obj)
 
 @app.route("/")
 def index():
@@ -33,15 +92,35 @@ def upload():
         return jsonify({"error": "no selected file"}), 400
 
     try:
-        df = pd.read_csv(f)
+        df, prep_warnings = load_and_preprocess(f)
     except Exception as e:
-        return jsonify({"error": f"could not read CSV: {e}"}), 400
+        return jsonify({"error": f"could not read/convert uploaded file: {e}"}), 400
 
-    return jsonify({
+    # run minimal sanity validation; reject if errors
+    validation_errors = validate_dataset(df)
+    if validation_errors:
+        return jsonify({
+            "error": "dataset failed minimal sanity checks",
+            "reasons": validation_errors,
+            "preprocessing_warnings": prep_warnings
+        }), 400
+
+    # run minimal sanity validation; reject if errors
+    validation_errors = validate_dataset(df)
+    if validation_errors:
+        return jsonify({
+            "error": "dataset failed minimal sanity checks",
+            "reasons": validation_errors,
+            "preprocessing_warnings": prep_warnings
+        }), 400
+
+    upload_resp = {
         "rows": int(df.shape[0]),
         "cols": int(df.shape[1]),
-        "columns": list(df.columns)
-    }), 200
+        "columns": list(df.columns),
+        "preprocessing_warnings": prep_warnings
+    }
+    return jsonify(make_json_serializable(upload_resp)), 200
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
@@ -62,9 +141,9 @@ def analyze():
     excluded_cols = [c.strip() for c in excluded.split(",") if c.strip()]
 
     try:
-        df = pd.read_csv(f)
+        df, prep_warnings = load_and_preprocess(f)
     except Exception as e:
-        return jsonify({"error": f"could not read CSV: {e}"}), 400
+        return jsonify({"error": f"could not read/convert uploaded file: {e}"}), 400
 
     # Build optimizer and detector
     try:
@@ -88,38 +167,114 @@ def analyze():
         except Exception as e:
             summary_text = f"Gemini summary failed: {e}"
 
+    # Optional: generate visualizations and return them when requested.
+    # Accepted values for return_plots: 'json' (plotly dict), 'png' (base64 PNG), 'both'
+    return_plots = request.form.get("return_plots", request.args.get("return_plots", "none")).lower()
+    plots_payload = None
+    if return_plots in ("json", "png", "both"):
+        try:
+            figs = visualize_fairness_dashboard(bias_report, df)
+            plots_payload = {}
+            for i, fig in enumerate(figs, start=1):
+                key = f"fig{i}"
+                if fig is None:
+                    plots_payload[key] = None
+                    continue
+                # always include plotly dict/json
+                if return_plots in ("json", "both"):
+                    try:
+                        plots_payload[key] = {"plotly": fig.to_dict()}
+                    except Exception:
+                        plots_payload[key] = {"plotly": None}
+
+                # include PNG if requested and kaleido available
+                if return_plots in ("png", "both"):
+                    try:
+                        import base64
+                        img_bytes = fig.to_image(format="png")
+                        plots_payload.setdefault(key, {})["png_base64"] = base64.b64encode(img_bytes).decode("utf-8")
+                    except Exception:
+                        # PNG export failed (kaleido maybe missing); record error
+                        plots_payload.setdefault(key, {})["png_base64"] = None
+        except Exception as e:
+            # If visualization generation fails, include an error note but continue returning other results
+            plots_payload = {"error": str(e)}
+
     # also return visualizations as JSON-ready (not images) - we return nothing heavy here; frontends should call visualization module directly if needed
-    return jsonify({
+    response = {
         "bias_report": bias_report,
         "fairness_score": fairness_score,
-        "summary": summary_text
-    }), 200
+        "summary": summary_text,
+        "dataset_summary": reporter.summary(),
+        "reliability": reporter.reliability()
+    }
+    if plots_payload is not None:
+        response["plots"] = plots_payload
 
-@app.route("/api/test", methods=["GET"])
-def test_local_file():
-    """Quick test route that analyzes your local dataset file"""
-    test_path = r"C:\Users\ACER\Documents\_Projects\D-BIAS\d-bias\_data\heart_disease_cleaned.csv"
-    if not os.path.exists(test_path):
-        return jsonify({"error": "File not found at " + test_path}), 404
+    return jsonify(make_json_serializable(response)), 200
 
-    df = pd.read_csv(test_path)
-    excluded = os.getenv("EXCLUDED_COLUMNS", "id,timestamp").split(",")
 
-    optimizer = MLBiasOptimizer(df.drop(columns=[c for c in excluded if c in df.columns], errors="ignore"))
-    detector = BiasDetector(df, exclude_columns=excluded, optimizer=optimizer)
+@app.route("/api/plot/<fig_id>.png", methods=["POST"])
+def plot_png(fig_id: str):
+    """Return a single plot as PNG (fig1, fig2, fig3).
+
+    Expects multipart/form-data with key 'file' (CSV/Excel). Performs preprocessing and validation
+    before generating the visualization. Returns 400 if validation fails.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "no file part"}), 400
+
+    f = request.files["file"]
+    if f.filename == "":
+        return jsonify({"error": "no selected file"}), 400
+
+    try:
+        df, prep_warnings = load_and_preprocess(f)
+    except Exception as e:
+        return jsonify({"error": f"could not read/convert uploaded file: {e}"}), 400
+
+    validation_errors = validate_dataset(df)
+    if validation_errors:
+        return jsonify({
+            "error": "dataset failed minimal sanity checks",
+            "reasons": validation_errors,
+            "preprocessing_warnings": prep_warnings
+        }), 400
+
+    # Build bias report
+    excluded = request.form.get("excluded", os.getenv("EXCLUDED_COLUMNS", "id,timestamp"))
+    excluded_cols = [c.strip() for c in excluded.split(",") if c.strip()]
+    try:
+        optimizer = MLBiasOptimizer(df.drop(columns=[c for c in excluded_cols if c in df.columns], errors="ignore"))
+    except Exception:
+        optimizer = MLBiasOptimizer(df)
+
+    detector = BiasDetector(df, exclude_columns=excluded_cols, optimizer=optimizer)
     bias_report = detector.generate_bias_report()
-    reporter = BiasReporter(df, bias_report)
-    fairness_score = reporter.fairness_score()
 
-    gemini = GeminiConnector(os.getenv("GEMINI_API_KEY"))
-    summary = gemini.summarize_biases(bias_report, "heart_disease_cleaned.csv", df.shape, excluded)
+    figs = visualize_fairness_dashboard(bias_report, df)
+    mapping = {"fig1": 0, "fig2": 1, "fig3": 2}
+    idx = mapping.get(fig_id.lower())
+    if idx is None:
+        return jsonify({"error": "invalid fig id; use fig1, fig2 or fig3"}), 400
 
-    return jsonify({
-        "fairness_score": fairness_score,
-        "bias_report": bias_report,
-        "summary": summary
-    })
+    try:
+        fig = figs[idx]
+    except Exception:
+        return jsonify({"error": "requested figure not available"}), 404
 
+    if fig is None:
+        return jsonify({"error": "requested figure is empty"}), 404
+
+    try:
+        img_bytes = fig.to_image(format="png")
+    except Exception as e:
+        return jsonify({"error": f"could not render image: {e}"}), 500
+
+    resp = make_response(img_bytes)
+    resp.headers.set("Content-Type", "image/png")
+    resp.headers.set("Content-Disposition", f"inline; filename={fig_id}.png")
+    return resp
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

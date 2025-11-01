@@ -22,6 +22,8 @@ __pycache__/
 *.pyo
 *.pyd
 
+
+
 # Virtual environments
 .venv/
 venv/
@@ -95,4 +97,14 @@ npm-debug.log*
 !*.yaml
 !*.json
 
+# Allow tracking the project's local dataset folder (explicit exception)
+# This un-ignores everything under d-bias/_data while keeping other global data ignore rules.
+!d-bias/_data/
+!d-bias/_data/**
+
 # End of file
+
+# Explicitly disallow PNG files from being staged/committed
+# Keeps datasets tracked but prevents binary PNG artifacts from being added.
+*.png
+*.PNG
