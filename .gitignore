@@ -108,3 +108,5 @@ npm-debug.log*
 # Keeps datasets tracked but prevents binary PNG artifacts from being added.
 *.png
 *.PNG
+*.html
+backend_plots/
