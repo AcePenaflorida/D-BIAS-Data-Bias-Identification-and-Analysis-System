@@ -216,7 +216,61 @@ def map_biases(bias_report: List[Dict], ai_text: Optional[str]) -> Dict:
 
     # Extract overall assessment/recommendations if present
     # Look for dedicated overall/fairness/concluding sections across parsed sections
-    overall = {"assessment": None, "fairness": None, "conclusion": None}
+    overall = {"assessment": None, "fairness": None, "conclusion": None, "actionable_recommendations": None}
+
+    def _parse_recommendations_to_list(text: str, max_items: int = 6, max_len: int = 300) -> List[str]:
+        """Convert a freeform recommendations paragraph into a short list of concise strings.
+
+        Heuristics:
+          - split on common bullet/number markers (1., -, •, *), or on double-newline paragraphs
+          - fall back to sentence-splitting if no bullets found
+          - strip, dedupe, cap to max_items and truncate long items
+        """
+        if not text:
+            return []
+        lines: List[str] = []
+        # normalize bullets to newlines
+        # split on lines that look like bullets or numbered items
+        for raw in re.split(r"\n+", text):
+            part = raw.strip()
+            if not part:
+                continue
+            # common bullet prefixes
+            m = re.match(r"^(?:\d+\.|\-|\*|•)\s*(.+)$", part)
+            if m:
+                lines.append(m.group(1).strip())
+            else:
+                # detect '1) text' patterns
+                m2 = re.match(r"^(?:\d+\))\s*(.+)$", part)
+                if m2:
+                    lines.append(m2.group(1).strip())
+                else:
+                    lines.append(part)
+
+        # if only one very long paragraph, try sentence-splitting
+        if len(lines) == 1:
+            cand = lines[0]
+            sentences = re.split(r"(?<=[\.\?\!])\s+", cand)
+            if len(sentences) > 1:
+                lines = [s.strip() for s in sentences if s.strip()]
+
+        # post-process: dedupe preserving order
+        seen = set()
+        compact = []
+        for l in lines:
+            s = re.sub(r"\s+", " ", l).strip()
+            if not s:
+                continue
+            if s in seen:
+                continue
+            seen.add(s)
+            # truncate if too long
+            if len(s) > max_len:
+                s = s[: max_len - 3].rstrip() + "..."
+            compact.append(s)
+            if len(compact) >= max_items:
+                break
+        return compact
     for sec in sections:
         hdr = (sec.get("header") or "").lower()
         body = sec.get("body")
@@ -228,6 +282,10 @@ def map_biases(bias_report: List[Dict], ai_text: Optional[str]) -> Dict:
             overall["fairness"] = body
         if "conclud" in hdr or "conclusion" in hdr:
             overall["conclusion"] = body
+        if "recommend" in hdr or "actionable" in hdr:
+            # store both raw text and a compact list for easy programmatic access
+            overall["actionable_recommendations_raw"] = body
+            overall["actionable_recommendations"] = _parse_recommendations_to_list(body)
 
     # fallback: if none found, try to extract from ai_text by keyword searches
     if not any(overall.values()):
@@ -242,6 +300,10 @@ def map_biases(bias_report: List[Dict], ai_text: Optional[str]) -> Dict:
             paras = [p.strip() for p in re.split(r"\n\n+", full) if p.strip()]
             if paras:
                 overall["conclusion"] = "\n\n".join(paras[-2:]) if len(paras) > 1 else paras[-1]
+                # also try to synthesize recommendations from the last paragraphs
+                rec_text = "\n\n".join(paras[-2:]) if len(paras) > 1 else paras[-1]
+                overall["actionable_recommendations_raw"] = rec_text
+                overall["actionable_recommendations"] = _parse_recommendations_to_list(rec_text)
 
     result["overall"] = overall
 
