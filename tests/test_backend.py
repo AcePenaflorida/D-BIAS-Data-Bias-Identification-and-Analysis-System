@@ -2,79 +2,33 @@ import requests
 import json
 import base64
 import os
-import webbrowser
+import importlib.util
+import sys
+import traceback
+
+# Resolve a unified output directory under d-bias/_data/program_generated_files
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(HERE, ".."))
+DBIAS_DIR = os.path.join(ROOT_DIR, "d-bias")
+OUT_DIR = os.path.join(DBIAS_DIR, "_data", "program_generated_files")
+os.makedirs(OUT_DIR, exist_ok=True)
 
 # Endpoint of your Flask backend
 url = "http://127.0.0.1:5000/api/analyze"
 
 # Your dataset path (change if needed)
-file_path = r"C:\Users\ACER\Documents\_Projects\D-BIAS\d-bias\_data\heart_disease_cleaned.csv"
+file_path = r"C:\Users\ACER\Documents\_Projects\D-BIAS\d-bias\_data\sample_datasets\heart_disease_cleaned.csv"
 
-print("📤 Sending dataset to backend...")
 
-# Upload + analyze
-with open(file_path, "rb") as f:
-    # request both AI summary and visualizations (both JSON and PNG)
-    response = requests.post(url, files={"file": f}, data={"run_gemini": "true", "return_plots": "both"}, timeout=120)
+# Where to cache analysis results so we don't re-run the backend repeatedly
+CACHE_PATH = os.path.join(OUT_DIR, "analysis_response.json")
 
-# Display the results
-if response.status_code == 200:
-    data = response.json()
 
-    print("\n✅ Bias Analysis Complete!")
-    print(f"Fairness Score: {data.get('fairness_score')}")
-
-    print("\n--- Bias Report ---")
-    print((data.get("bias_report") if data.get("bias_report") is not None else "No bias_report returned by backend."))
-
-    print("\n--- Dataset Summary ---")
-    print(data.get("dataset_summary", "No summary available."))
-    print("\n--- Reliability ---")
-    print(data.get("reliability", "No reliability info available."))
-
-    print("\n--- Gemini Summary ---")
-    print(data.get("summary", "No AI summary generated."))
-    
-    # Display mapped biases (if backend produced them)
-    mapped = data.get("mapped_biases")
-    print("\n--- MAPPED BIASES ---")
-    print(mapped)
-    mapped_err = data.get("mapped_biases_error")
-    if mapped_err:
-        print("\n--- Mapping Error ---")
-        print(mapped_err)
-    # if mapped:
-    #     print("\n--- MAPPED BIASES ---")
-    #     try:
-    #         bias_types = mapped.get("bias_types", {})
-    #         for btype, items in bias_types.items():
-    #             print(f"\n== {btype} ==")
-    #             for it in items:
-    #                 feat = it.get("feature")
-    #                 sev = it.get("severity")
-    #                 desc = it.get("description")
-    #                 ai_ex = it.get("ai_explanation")
-    #                 print(f"- {feat} (Severity: {sev})")
-    #                 print(f"  Description: {desc}")
-    #                 if ai_ex:
-    #                     # print a short snippet to keep console readable
-    #                     snippet = ai_ex if len(ai_ex) < 800 else ai_ex[:800] + "..."
-    #                     print(f"  AI explanation: {snippet}")
-    #     except Exception as e:
-    #         print(f"Failed to pretty-print mapped_biases: {e}")
-
-        # print overall
-        overall = mapped.get("overall", {})
-        if overall:
-            print("\n--- MAPPED OVERALL ---")
-            print("Assessment:\n", overall.get("assessment") or "(none)")
-            print("\nFairness:\n", overall.get("fairness") or "(none)")
-            print("\nConclusion:\n", overall.get("conclusion") or "(none)")
-    # Handle returned visualizations (if any)
+def get_plots(data):
     plots = data.get("plots")
     if plots:
         print("\n--- Plots returned by backend ---")
-        out_dir = os.path.join(os.getcwd(), "backend_plots")
+        out_dir = OUT_DIR
         os.makedirs(out_dir, exist_ok=True)
         for key, payload in plots.items():
             if payload is None:
@@ -93,10 +47,6 @@ if response.status_code == 200:
                     with open(png_path, "wb") as imgf:
                         imgf.write(img_bytes)
                     print(f"Saved PNG: {png_path}")
-                    try:
-                        webbrowser.open(f"file://{png_path}")
-                    except Exception:
-                        pass
                 except Exception as e:
                     print(f"Failed to write PNG for {key}: {e}")
 
@@ -114,17 +64,127 @@ if response.status_code == 200:
                         json.dump(plotly_dict, hf)
                         hf.write(";\nPlotly.newPlot('plot', fig.data, fig.layout || {});\n</script>\n</body>\n</html>")
                     print(f"Saved interactive HTML: {html_path}")
-                    try:
-                        webbrowser.open(f"file://{html_path}")
-                    except Exception:
-                        pass
                 except Exception as e:
                     print(f"Failed to write HTML for {key}: {e}")
+
+
+def analyze_and_save(url: str, file_path: str, out_path: str, run_gemini: bool = True, return_plots: str = "both") -> dict:
+    """POST the dataset to the backend, save JSON response to out_path and return it.
+
+    This avoids re-running the analysis when you already have a saved response.
+    """
+    print("📤 Sending dataset to backend...")
+    with open(file_path, "rb") as f:
+        response = requests.post(
+            url,
+            files={"file": f},
+            data={"run_gemini": "true" if run_gemini else "false", "return_plots": return_plots},
+            timeout=120,
+        )
+
+    if response.status_code != 200:
+        # surface helpful error
+        try:
+            body = response.json()
+        except Exception:
+            body = response.text
+        raise RuntimeError(f"Analysis failed ({response.status_code}): {body}")
+
+    data = response.json()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as wf:
+        json.dump(data, wf, ensure_ascii=False, indent=2)
+    print(f"Saved analysis to: {out_path}")
+    return data
+
+def load_saved(out_path: str) -> dict:
+    with open(out_path, "r", encoding="utf-8") as rf:
+        return json.load(rf)
+
+
+# Load cached response if available, otherwise run analysis and save
+if os.path.exists(CACHE_PATH):
+    print(f"🔁 Loading cached analysis from {CACHE_PATH}")
+    data = load_saved(CACHE_PATH)
 else:
-    print(f"❌ Error {response.status_code}: {response.text}")
-    # If the backend returned JSON with reasons (e.g., validation), try to pretty-print
-    try:
-        err = response.json()
-        print(json.dumps(err, indent=2))
-    except Exception:
-        pass
+    data = analyze_and_save(url, file_path, CACHE_PATH)
+
+# Display the results (same output as before)
+print("\n✅ Bias Analysis Complete!")
+print(f"Fairness Score: {data.get('fairness_score')}")
+
+print("\n--- Bias Report ---")
+print((data.get("bias_report") if data.get("bias_report") is not None else "No bias_report returned by backend."))
+
+print("\n--- Dataset Summary ---")
+print(data.get("dataset_summary", "No summary available."))
+print("\n--- Reliability ---")
+print(data.get("reliability", "No reliability info available."))
+
+print("\n--- Gemini Summary ---")
+print(data.get("summary", "No AI summary generated."))
+
+# Display mapped biases (if backend produced them)
+mapped = data.get("mapped_biases") or {}
+print("\n--- MAPPED BIASES ---")
+print(mapped)
+mapped_err = data.get("mapped_biases_error")
+if mapped_err:
+    print("\n--- Mapping Error ---")
+    print(mapped_err)
+
+# print overall
+overall = (mapped or {}).get("overall", {}) or {}
+if overall:
+    print("\n--- MAPPED OVERALL ---")
+    print("Assessment:\n", overall.get("assessment") or "(none)")
+    print("\nFairness:\n", overall.get("fairness") or "(none)")
+    print("\nConclusion:\n", overall.get("conclusion") or "(none)")
+    # actionable_recommendations may be a list (preferred) or raw string
+    ar = overall.get("actionable_recommendations") or overall.get("actionable_recommendations_raw")
+    if isinstance(ar, list):
+        print("\nActionable Recommendations:")
+        for i, item in enumerate(ar, start=1):
+            print(f"{i}. {item}")
+    else:
+        print("\nActionable Recommendations:\n", ar or "(none)")
+
+print(get_plots(data))
+
+
+def generate_pdf_from_response(data: dict, out_pdf_path: str = None) -> str:
+    """
+    Convenience wrapper for tests: dynamically import the backend visualization module
+    and call its `generate_pdf_report` function with the analysis response.
+
+    Returns path to the written PDF.
+    """
+    vis_path = os.path.join(DBIAS_DIR, "backend", "visualization.py")
+    if not os.path.exists(vis_path):
+        raise FileNotFoundError(f"visualization.py not found at expected path: {vis_path}")
+
+    spec = importlib.util.spec_from_file_location("db_backend_visualization", vis_path)
+    vis = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vis)
+
+    if not hasattr(vis, "generate_pdf_report"):
+        raise RuntimeError("visualization.generate_pdf_report not found. Please update backend/visualization.py")
+
+    out_dir = OUT_DIR
+    os.makedirs(out_dir, exist_ok=True)
+    if out_pdf_path is None:
+        out_pdf_path = os.path.join(out_dir, "dbias_report.pdf")
+
+    pdf_path = vis.generate_pdf_report(data, out_pdf_path)
+    print(f"Generated PDF report: {pdf_path}")
+    return pdf_path
+
+
+# Optionally generate a PDF when this script is invoked directly
+try:
+    _ = generate_pdf_from_response(data)
+except Exception as e:
+    print(f"PDF generation skipped or failed: {e!r}")
+    print("\n--- PDF Error Traceback ---")
+    print(traceback.format_exc())
+

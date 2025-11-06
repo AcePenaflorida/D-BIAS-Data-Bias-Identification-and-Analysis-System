@@ -562,6 +562,7 @@ class BiasReporter:
         """
         print("Hardcoded")
         n = len(self.df)
+        rows, columns = self.df.shape
         score = self.fairness_score()
         if n < 100:
             level = "low"
@@ -582,7 +583,8 @@ class BiasReporter:
             conclusion = "High bias risk — dataset requires correction before modeling."
 
         return {
-            "n_rows": int(n),
+            "n_rows": int(rows),
+            "n_columns": int(columns),
             "fairness_score": int(score),
             "reliability_level": level,
             "message": f"{note} {conclusion}".strip()

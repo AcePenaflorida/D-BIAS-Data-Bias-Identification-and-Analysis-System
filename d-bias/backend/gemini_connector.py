@@ -76,6 +76,8 @@ class GeminiConnector:
           - **Overall Reliability Assessment:** How trustworthy and balanced the dataset appears.
           - **Fairness & Ethical Implications:** Any underrepresentation or bias concerns.
           - **Concluding Summary:** A short paragraph summarizing the dataset’s overall “fairness health score” (qualitative is fine).
+          - **Actionable Recommendations:** Specific steps to improve dataset fairness and mitigate identified biases.  
+          
 
           Write your explanation in a structured, data-driven way — use numerical references, comparisons, and real-world examples to make your insights relatable and understandable.
           """

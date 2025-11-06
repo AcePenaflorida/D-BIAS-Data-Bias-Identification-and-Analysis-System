@@ -9,3 +9,5 @@ google-generativeai
 supabase
 python-dotenv
 kaleido
+reportlab
+Pillow
