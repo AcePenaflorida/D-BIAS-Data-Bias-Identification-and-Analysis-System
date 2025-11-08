@@ -84,15 +84,17 @@ export default function App() {
           onViewHistory={handleViewHistory}
         />
       ) : (
-        <Dashboard
-          result={analysisResult!}
-          onBackToUpload={handleBackToUpload}
-          isAuthenticated={isAuthenticated}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          userHistory={userHistory}
-          onViewHistory={handleViewHistory}
-        />
+        analysisResult && (
+          <Dashboard
+            result={analysisResult}
+            onBackToUpload={handleBackToUpload}
+            isAuthenticated={isAuthenticated}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            userHistory={userHistory}
+            onViewHistory={handleViewHistory}
+          />
+        )
       )}
     </div>
   );
