@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ArrowLeft, Download, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, Code } from 'lucide-react';
+import { PlotlyFigure } from './charts/PlotlyFigure';
 import { Button } from './ui/button';
 import { Header } from './Header';
 import { StatCard } from './StatCard';
@@ -34,6 +35,7 @@ export function Dashboard({
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [selectedHistoryResult, setSelectedHistoryResult] = useState<AnalysisResult | null>(null);
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
+  const [showRawBias, setShowRawBias] = useState(false);
 
   const getFairnessColor = (label: string) => {
     switch (label) {
@@ -165,40 +167,59 @@ export function Dashboard({
                   <p className={`inline-block px-3 py-1 rounded-full border text-sm ${getRiskColor(result.reliabilityLevel)}`}>
                     {result.reliabilityLevel}
                   </p>
+                  {result.reliabilityMessage && (
+                    <p className="mt-2 text-slate-700 text-sm max-w-prose">
+                      <span className="font-medium">Notes:</span> {result.reliabilityMessage}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Overall Message */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-              <h3 className="text-blue-900 mb-2">Overall Assessment</h3>
-              <p className="text-blue-800">{result.overallMessage}</p>
-            </div>
-
-            {/* Visualizations */}
-            <div className="mb-8">
-              <h2 className="text-slate-900 mb-4">Data Distribution</h2>
+            {/* Plotly Visualizations from backend (fallback to legacy charts if missing) */}
+            <div className="mb-10 space-y-8">
               <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <DistributionChart data={result.distributions} />
+                {result.plots?.fig1?.plotly ? (
+                  <PlotlyFigure figure={result.plots.fig1} title="Bias Overview" />
+                ) : (
+                  <>
+                    <h2 className="text-slate-900 mb-4">Data Distribution (Fallback)</h2>
+                    <DistributionChart data={result.distributions} />
+                  </>
+                )}
               </div>
-            </div>
-
-            <div className="mb-8">
-              <h2 className="text-slate-900 mb-6">Data Bias Plots</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <h3 className="text-slate-900 mb-4">Bias Frequency</h3>
-                  <BiasFrequencyChart biases={result.detectedBiases} />
+                  {result.plots?.fig2?.plotly ? (
+                    <PlotlyFigure figure={result.plots.fig2} title="Bias Correlations" />
+                  ) : (
+                    <>
+                      <h3 className="text-slate-900 mb-4">Bias Frequency (Fallback)</h3>
+                      <BiasFrequencyChart biases={result.detectedBiases} />
+                    </>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <h3 className="text-slate-900 mb-4">Bias Heatmap</h3>
-                  <BiasHeatmap biases={result.detectedBiases} />
-                </div>
-                <div className="bg-white rounded-lg border border-slate-200 p-6 lg:col-span-2">
-                  <h3 className="text-slate-900 mb-4">Bias Density</h3>
-                  <BiasDensityChart biases={result.detectedBiases} />
+                  {result.plots?.fig3?.plotly ? (
+                    <PlotlyFigure figure={result.plots.fig3} title="Bias Severity Distribution" />
+                  ) : (
+                    <>
+                      <h3 className="text-slate-900 mb-4">Bias Heatmap (Fallback)</h3>
+                      <BiasHeatmap biases={result.detectedBiases} />
+                    </>
+                  )}
                 </div>
               </div>
+              {/* Always include a density fallback visualization */}
+              {!result.plots?.fig3?.plotly && (
+                <div className="bg-white rounded-lg border border-slate-200 p-6">
+                  <h3 className="text-slate-900 mb-4">Bias Density (Fallback)</h3>
+                  <BiasDensityChart biases={result.detectedBiases} />
+                </div>
+              )}
+              {result.plots?.error && (
+                <div className="text-sm text-red-600">Plot generation error: {result.plots.error}</div>
+              )}
             </div>
 
             {/* Detected Bias Summary */}
@@ -210,6 +231,24 @@ export function Dashboard({
                 ))}
               </div>
             </div>
+
+            {/* Raw Bias JSON Debug Toggle */}
+            {result.rawBiasReport && result.rawBiasReport.length > 0 && (
+              <div className="mb-10">
+                <button
+                  onClick={() => setShowRawBias(!showRawBias)}
+                  className="flex items-center gap-2 text-xs px-3 py-2 rounded border border-slate-300 bg-white hover:bg-slate-50 transition-colors"
+                >
+                  <Code className="w-3 h-3" />
+                  {showRawBias ? 'Hide Raw Bias JSON' : 'Show Raw Bias JSON'}
+                </button>
+                {showRawBias && (
+                  <pre className="mt-3 p-4 text-xs bg-slate-900 text-slate-100 rounded-lg overflow-auto max-h-96">
+{JSON.stringify(result.rawBiasReport, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
 
             {/* Right Column: SidePanel */}

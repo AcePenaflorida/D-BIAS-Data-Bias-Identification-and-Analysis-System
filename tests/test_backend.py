@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import re
 
 
 # ==================== CONFIGURATION ====================
@@ -308,10 +309,43 @@ def display_analysis_results(data):
     print("\n--- Gemini Summary ---")
     print(data.get("summary", "No AI summary generated."))
 
-    # Display mapped biases
+    # Display mapped biases with bullet formatting
     mapped = data.get("mapped_biases") or {}
     print("\n--- MAPPED BIASES ---")
     print(mapped)
+    bias_types = (mapped or {}).get("bias_types", {}) or {}
+    if not bias_types:
+        print("(none)")
+    else:
+        for btype, items in bias_types.items():
+            print(f"\n• {btype}")
+            if not items:
+                print("   - (no items)")
+                continue
+            for it in items:
+                feat = it.get("feature") or "unknown"
+                sev = it.get("severity") or ""
+                desc = (it.get("description") or "").strip()
+                ai = (it.get("ai_explanation") or "").strip()
+                ai_bullets = it.get("ai_explanation_bullets") or []
+                print(f"   - Feature: {feat}")
+                if sev:
+                    print(f"     Severity: {sev}")
+                if desc:
+                    print(f"     Description: {desc}")
+                if ai:
+                    print("     AI Explanation:")
+                    if ai_bullets:
+                        for bullet in ai_bullets:
+                            cleaned = re.sub(r"^(?:\*+\s*|[-•]\s*|\d+\.?\s*)", "", bullet.strip())
+                            print(f"       • {cleaned}")
+                    else:
+                        # Fallback: line-split
+                        ai_lines = [l.strip() for l in ai.splitlines() if l.strip()]
+                        for line in ai_lines:
+                            cleaned = re.sub(r"^(?:\*+\s*|[-•]\s*|\d+\.?\s*)", "", line)
+                            print(f"       • {cleaned}")
+                print("")
     
     mapped_err = data.get("mapped_biases_error")
     if mapped_err:
