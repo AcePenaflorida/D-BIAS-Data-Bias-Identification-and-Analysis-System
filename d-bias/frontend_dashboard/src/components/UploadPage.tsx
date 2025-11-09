@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Upload, FileSpreadsheet, AlertCircle, Brain } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
@@ -21,8 +21,8 @@ interface UploadPageProps {
   onViewHistory: (result: AnalysisResult) => void;
 }
 
-import { analyzeDataset } from '../services/api';
-import { Switch } from './ui/switch';
+import { analyzeDataset, uploadDataset, type UploadInfo } from '../services/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 
 export function UploadPage({
   onAnalysisComplete,
@@ -37,7 +37,46 @@ export function UploadPage({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [preview, setPreview] = useState<string[][]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [enableAI, setEnableAI] = useState(false);
+  const [uploadInfo, setUploadInfo] = useState<UploadInfo | null>(null);
+  const [uploadInfoError, setUploadInfoError] = useState<string>('');
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [analysisController, setAnalysisController] = useState<AbortController | null>(null);
+
+  // Reset all dataset-related state (used when closing the preview dialog)
+  const resetDatasetSelection = useCallback(() => {
+    setFile(null);
+    setPreview([]);
+    setUploadInfo(null);
+    setUploadInfoError('');
+    setIsValidating(false);
+    setError('');
+  }, []);
+
+  // Close logic for preview dialog: always clear dataset selection (valid or invalid) per refined requirements
+  const closePreviewDialog = useCallback(() => {
+    if (isAnalyzing && analysisController) {
+      analysisController.abort();
+    }
+    setShowPreviewDialog(false);
+    // Always fully reset so summary shows neutral state
+    resetDatasetSelection();
+  }, [isAnalyzing, analysisController, resetDatasetSelection]);
+
+  // Safety net: if validation finishes successfully but the modal somehow didn't open,
+  // auto-open it when we have uploadInfo and no validation error.
+  useEffect(() => {
+    if (file && uploadInfo && !uploadInfoError) {
+      setShowPreviewDialog(true);
+    }
+  }, [file, uploadInfo, uploadInfoError]);
+
+  // Debug: track dialog open state changes
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.debug('[UploadPage] showPreviewDialog:', showPreviewDialog);
+  }, [showPreviewDialog]);
 
   const validateFile = (file: File): boolean => {
     const name = (file.name || '').toLowerCase();
@@ -59,17 +98,6 @@ export function UploadPage({
     return true;
   };
 
-  const handleFileChange = (selectedFile: File | null) => {
-    if (!selectedFile) return;
-
-    setError('');
-    if (validateFile(selectedFile)) {
-      setFile(selectedFile);
-      // Generate real preview for CSV (XLSX preview skipped)
-      generatePreview(selectedFile);
-    }
-  };
-
   // Real CSV preview using Papa Parse (first 5 rows)
   const generatePreview = (file: File) => {
     const name = (file.name || '').toLowerCase();
@@ -86,6 +114,8 @@ export function UploadPage({
       dynamicTyping: false,
       skipEmptyLines: true,
       preview: 6,
+      // Use a Web Worker so large files don't block UI and prevent dialog from appearing promptly
+      worker: true,
       complete: (results: Papa.ParseResult<string[]>) => {
         const rows = (results.data as unknown as string[][]) || [];
         if (rows.length > 0) {
@@ -134,15 +164,58 @@ export function UploadPage({
 
     setIsAnalyzing(true);
     setError('');
+    const controller = new AbortController();
+    setAnalysisController(controller);
 
     try {
-  const result = await analyzeDataset(file, { runGemini: enableAI, returnPlots: 'json' });
+      const result = await analyzeDataset(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
       onAnalysisComplete(result);
     } catch (e: any) {
-      const msg = String(e?.message || 'Analysis failed.');
-      setError(msg);
+      if (e?.name === 'AbortError') {
+        setError('Analysis canceled.');
+      } else {
+        const msg = String(e?.message || 'Analysis failed.');
+        setError(msg);
+      }
     } finally {
       setIsAnalyzing(false);
+      setAnalysisController(null);
+    }
+  };
+
+  const handleFileChange = (selectedFile: File | null) => {
+    if (!selectedFile) return;
+
+    setError('');
+    if (validateFile(selectedFile)) {
+      setFile(selectedFile);
+      // Generate real preview for CSV (XLSX preview skipped)
+      generatePreview(selectedFile);
+      // Kick off backend lightweight validation
+      setUploadInfo(null);
+      setUploadInfoError('');
+      // Start validation without opening the preview yet to avoid flicker for invalid datasets
+      setShowPreviewDialog(false);
+      setIsValidating(true);
+      console.debug('[UploadPage] Validating dataset…');
+      uploadDataset(selectedFile)
+        .then((info) => {
+          console.debug('[UploadPage] Validation success', info);
+          setUploadInfo(info);
+          setIsValidating(false);
+          // Open the preview only after successful validation
+          setShowPreviewDialog(true);
+        })
+        .catch((e: any) => {
+          const msg = String(e?.message || 'Validation failed');
+          setUploadInfoError(msg);
+          console.warn('[UploadPage] Validation failed', msg);
+          // Close preview dialog if it was opened and show validation error dialog instead
+          setShowPreviewDialog(false);
+          setIsValidating(false);
+          setUploadInfo(null);
+          setShowValidationDialog(true);
+        });
     }
   };
 
@@ -223,13 +296,21 @@ export function UploadPage({
                 </div>
               </div>
 
-              {file && (
-                <div className="mt-4 p-4 bg-slate-50 rounded-lg">
-                  <p className="text-slate-700">
-                    <span className="text-slate-500">Selected file:</span> {file.name}
-                  </p>
-                </div>
-              )}
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                {file ? (
+                  <>
+                    <p className="text-slate-700">
+                      <span className="text-slate-500">Selected file:</span> {file.name}
+                    </p>
+                    {/* Show only validating status; suppress rows/columns/columns list per refined requirements */}
+                    {!uploadInfoError && isValidating && (
+                      <p className="mt-2 text-xs text-slate-500">Validating dataset…</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-slate-500 text-sm">No file selected.</p>
+                )}
+              </div>
             </Card>
 
             {/* Error Message */}
@@ -240,53 +321,9 @@ export function UploadPage({
               </Alert>
             )}
 
-            {/* Dataset Preview */}
-            {preview.length > 0 && (
-              <Card className="p-6 mb-6">
-                <h3 className="text-slate-900 mb-4">Dataset Preview</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        {preview[0].map((header, idx) => (
-                          <th key={idx} className="text-left p-2 text-slate-700">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.slice(1).map((row, rowIdx) => (
-                        <tr key={rowIdx} className="border-b border-slate-100">
-                          {row.map((cell, cellIdx) => (
-                            <td key={cellIdx} className="p-2 text-slate-600">
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
+            {/* Dataset Preview now shown in a modal dialog */}
 
-            {/* AI Toggle + Analyze Button */}
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
-                <Brain className={`w-4 h-4 ${enableAI ? 'text-purple-600' : 'text-slate-400'}`} />
-                <span className="text-sm text-slate-700">Enable AI Explanations</span>
-                <Switch checked={enableAI} onCheckedChange={(v) => setEnableAI(!!v)} />
-              </div>
-              <Button onClick={handleAnalyze} disabled={!file || isAnalyzing} size="lg" className="px-8 w-full md:w-auto">
-                {isAnalyzing ? (enableAI ? 'Analyzing + AI…' : 'Analyzing Dataset…') : 'Analyze / Detect Bias'}
-              </Button>
-              {enableAI && (
-                <p className="text-xs text-slate-500 max-w-md text-center">
-                  Requires GEMINI_API_KEY in backend environment. If absent, AI explanations will be empty.
-                </p>
-              )}
-            </div>
+            {/* Page-level Analyze button removed; only available inside preview dialog */}
           </div>
         </div>
       </main>
@@ -297,6 +334,185 @@ export function UploadPage({
       {selectedHistory && (
         <PDFPreviewDialog isOpen={showHistoryPreview} onClose={() => setShowHistoryPreview(false)} result={selectedHistory} />
       )}
+
+      {/* Validation Error Dialog */}
+      <Dialog
+        open={showValidationDialog}
+        onOpenChange={(open) => {
+          setShowValidationDialog(open);
+          if (!open && uploadInfoError) {
+            resetDatasetSelection();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                </span>
+                <span className="text-red-700">Dataset Validation Failed</span>
+              </div>
+            </DialogTitle>
+            <DialogDescription>
+              <span className="block rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                Please fix the following issues before running analysis:
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-3">
+            <ul className="space-y-3">
+              {extractReasons(uploadInfoError).map((r, idx) => (
+                <li key={idx} className="flex items-start gap-3">
+                  <span className="mt-1 inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full bg-red-400"></span>
+                  <span className="text-sm text-slate-800">{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="mt-4 text-xs text-slate-500">
+            Tip: Ensure ≥ 20 rows, ≥ 3 columns, include at least one categorical/text feature, and reduce duplicate rows.
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowValidationDialog(false);
+                // Explicitly reset upon closing so summary shows neutral state
+                resetDatasetSelection();
+              }}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setShowValidationDialog(false);
+                resetDatasetSelection();
+                document.getElementById('file-upload')?.click();
+              }}
+            >
+              Choose Another File
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dataset Preview Dialog */}
+      <Dialog
+        open={showPreviewDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closePreviewDialog();
+          } else if (!isAnalyzing) {
+            setShowPreviewDialog(true);
+          }
+        }}
+      >
+  <DialogContent className="w-[90vw] max-w-[960px] min-w-[340px] max-h-[80vh] rounded-xl overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle>Dataset Preview</DialogTitle>
+                <DialogDescription>
+                  {uploadInfo ? (
+                    <span className="text-sm text-slate-600">
+                      <span className="font-medium">File:</span> {file?.name} &nbsp;•&nbsp;
+                      {/* <span className="font-medium">Rows:</span> {uploadInfo.rows} &nbsp;•&nbsp;
+                      <span className="font-medium">Columns:</span> {uploadInfo.cols} */}
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">Validating dataset…</span>
+                  )}
+                </DialogDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => document.getElementById('file-upload')?.click()}
+                className="shrink-0"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> Re-upload CSV
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-slate-200 overflow-hidden">
+            {/* Fixed-size scrollable preview area: enforce both-axis scroll inside dedicated pane */}
+            <div className="w-full max-w-full h-[420px] overflow-x-auto overflow-y-auto overscroll-contain">
+              {preview.length > 0 ? (
+                <table className="w-max text-sm table-auto">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-slate-200">
+                      {preview[0].map((header, idx) => (
+                        <th
+                          key={idx}
+                          className="text-left px-3 py-2 text-slate-700 whitespace-nowrap bg-white"
+                        >
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.slice(1).map((row, rowIdx) => (
+                      <tr key={rowIdx} className="border-b border-slate-100">
+                        {row.map((cell, cellIdx) => (
+                          <td
+                            key={cellIdx}
+                            className="px-3 py-2 text-slate-700 whitespace-nowrap align-top"
+                            title={cell}
+                          >
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-6 text-sm text-slate-500">Preparing preview…</div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={closePreviewDialog}
+              >
+                {isAnalyzing ? 'Cancel' : 'Close'}
+              </Button>
+              {uploadInfo && !uploadInfoError && (
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={!file || isAnalyzing}
+                  aria-busy={isAnalyzing}
+                  className="flex items-center gap-2"
+                >
+                  {isAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isAnalyzing ? 'Analyzing…' : 'Analyze'}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Removed page overlay; spinner now lives inside the Analyze button for a lighter UX */}
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+// Helper to extract reasons list from aggregated error string
+function extractReasons(errMsg: string): string[] {
+  if (!errMsg) return [];
+  // Expected pattern: "dataset failed minimal sanity checks: reason1; reason2; reason3"
+  const idx = errMsg.indexOf(':');
+  const tail = idx >= 0 ? errMsg.slice(idx + 1) : errMsg;
+  return tail
+    .split(/;|\n|\r/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

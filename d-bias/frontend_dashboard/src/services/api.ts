@@ -7,16 +7,32 @@ async function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, tries = 2, timeoutMs = 90000): Promise<Response> {
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  tries = 2,
+  timeoutMs = 90000,
+  okRequired: boolean = true,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
   let attempt = 0;
   let lastErr: any;
   while (attempt <= tries) {
     try {
       const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), timeoutMs);
+      const timeout = setTimeout(() => ac.abort(), timeoutMs);
+      let externalAbortHandler: any = null;
+      if (externalSignal) {
+        if (externalSignal.aborted) ac.abort();
+        externalAbortHandler = () => ac.abort();
+        externalSignal.addEventListener('abort', externalAbortHandler, { once: true });
+      }
       const resp = await fetch(input, { ...init, signal: ac.signal });
       clearTimeout(timeout);
-      if (!resp.ok) {
+      if (externalSignal && externalAbortHandler) {
+        externalSignal.removeEventListener('abort', externalAbortHandler);
+      }
+      if (okRequired && !resp.ok) {
         const txt = await resp.text().catch(() => '');
         throw new Error(`HTTP ${resp.status}: ${txt}`);
       }
@@ -41,14 +57,22 @@ function toRisk(score: number): AnalysisResult['biasRisk'] {
 
 export async function analyzeDataset(
   file: File,
-  opts: { runGemini: boolean; returnPlots: 'none' | 'json' | 'png' | 'both' } = { runGemini: false, returnPlots: 'json' }
+  opts: { runGemini: boolean; returnPlots: 'none' | 'json' | 'png' | 'both' } = { runGemini: true, returnPlots: 'json' },
+  signal?: AbortSignal,
 ): Promise<AnalysisResult> {
   const form = new FormData();
   form.append('file', file);
   form.append('run_gemini', String(opts.runGemini));
   form.append('return_plots', opts.returnPlots);
 
-  const res = await fetchWithRetry(`${BACKEND_URL}/api/analyze`, { method: 'POST', body: form }, 1, 90000);
+  const res = await fetchWithRetry(
+    `${BACKEND_URL}/api/analyze`,
+    { method: 'POST', body: form },
+    1,
+    90000,
+    true,
+    signal,
+  );
   const data = await res.json();
 
   const fairnessScore = Number(data.fairness_score ?? data.dataset_summary?.fairness_score ?? 0);
@@ -126,4 +150,48 @@ export async function analyzeDataset(
   };
 
   return result;
+}
+
+// Shape returned by backend /api/upload on success
+export type UploadInfo = {
+  rows: number;
+  cols: number;
+  columns: string[];
+  preprocessing_warnings?: unknown;
+};
+
+// Upload a dataset for quick validation/metadata without full analysis
+export async function uploadDataset(file: File): Promise<UploadInfo> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetchWithRetry(
+    `${BACKEND_URL}/api/upload`,
+    { method: 'POST', body: form },
+    1,
+    30000,
+    false
+  );
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    // ignore JSON parse errors
+  }
+
+  if (!res.ok) {
+    const reasons: string[] = Array.isArray(data?.reasons) ? data.reasons : [];
+    const baseMsg = typeof data?.error === 'string' ? data.error : 'Upload validation failed';
+    const msg = reasons.length ? `${baseMsg}: ${reasons.join('; ')}` : baseMsg;
+    const err = new Error(msg) as Error & { reasons?: string[] };
+    if (reasons.length) err.reasons = reasons;
+    throw err;
+  }
+
+  return {
+    rows: Number(data?.rows ?? 0),
+    cols: Number(data?.cols ?? 0),
+    columns: Array.isArray(data?.columns) ? data.columns.map((c: any) => String(c)) : [],
+    preprocessing_warnings: data?.preprocessing_warnings,
+  } as UploadInfo;
 }

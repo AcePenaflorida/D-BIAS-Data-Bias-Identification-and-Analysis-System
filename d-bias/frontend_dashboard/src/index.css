@@ -449,6 +449,10 @@
   }
 }
 
+/* Fallback for animate-spin utility (not present in current CSS bundle) */
+@keyframes dbias-spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: dbias-spin 1s linear infinite; }
+
 @layer utilities {
   .\@container\/card-header {
     container: card-header / inline-size;
