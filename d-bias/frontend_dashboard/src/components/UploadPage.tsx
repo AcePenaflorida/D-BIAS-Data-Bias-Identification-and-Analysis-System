@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import Papa from 'papaparse';
+import { Upload, FileSpreadsheet, AlertCircle, Brain } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
@@ -8,6 +9,8 @@ import { HomeHistory } from './HomeHistory';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
+// TODO: create services/api.ts to provide analyzeDataset; temporary inline fallback below.
+// import { analyzeDataset } from '../services/api';
 
 interface UploadPageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
@@ -17,6 +20,9 @@ interface UploadPageProps {
   userHistory: AnalysisResult[];
   onViewHistory: (result: AnalysisResult) => void;
 }
+
+import { analyzeDataset } from '../services/api';
+import { Switch } from './ui/switch';
 
 export function UploadPage({
   onAnalysisComplete,
@@ -31,19 +37,25 @@ export function UploadPage({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [preview, setPreview] = useState<string[][]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [enableAI, setEnableAI] = useState(false);
 
   const validateFile = (file: File): boolean => {
+    const name = (file.name || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
     const validTypes = [
       'text/csv',
-      'application/vnd.ms-excel',
+      'application/vnd.ms-excel', // sometimes used for CSV by browsers
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', // some CSVs report as plain text
     ];
-    
-    if (!validTypes.includes(file.type) && !file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+
+    const isCsv = name.endsWith('.csv') || type.includes('csv') || type === 'text/plain';
+    const isXlsx = name.endsWith('.xlsx') || type.includes('spreadsheetml');
+
+    if (!isCsv && !isXlsx && !validTypes.includes(type)) {
       setError('Invalid file format. Please upload a CSV or XLSX file.');
       return false;
     }
-
     return true;
   };
 
@@ -53,22 +65,45 @@ export function UploadPage({
     setError('');
     if (validateFile(selectedFile)) {
       setFile(selectedFile);
-      // Simulate file preview
+      // Generate real preview for CSV (XLSX preview skipped)
       generatePreview(selectedFile);
     }
   };
 
+  // Real CSV preview using Papa Parse (first 5 rows)
   const generatePreview = (file: File) => {
-    // Simulate CSV preview with mock data
-    const mockPreview = [
-      ['ID', 'Age', 'Sex', 'Income', 'Education', 'Outcome'],
-      ['1', '34', 'Male', '65000', 'Bachelor', 'Approved'],
-      ['2', '45', 'Male', '78000', 'Master', 'Approved'],
-      ['3', '29', 'Female', '52000', 'Bachelor', 'Denied'],
-      ['4', '38', 'Male', '71000', 'PhD', 'Approved'],
-      ['5', '51', 'Male', '95000', 'Master', 'Approved'],
-    ];
-    setPreview(mockPreview);
+    const name = (file.name || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
+    const isCsv = name.endsWith('.csv') || type.includes('csv') || type === 'text/plain';
+
+    if (!isCsv) {
+      setPreview([]);
+      return;
+    }
+
+    Papa.parse<string[]>(file, {
+      header: false,
+      dynamicTyping: false,
+      skipEmptyLines: true,
+      preview: 6,
+      complete: (results: Papa.ParseResult<string[]>) => {
+        const rows = (results.data as unknown as string[][]) || [];
+        if (rows.length > 0) {
+          const header = rows[0];
+          const isHeader = header.every((h) => typeof h === 'string');
+          if (!isHeader) {
+            const cols = Math.max(...rows.map((r) => r.length));
+            const genHeader = Array.from({ length: cols }, (_, i) => `col_${i + 1}`);
+            setPreview([genHeader, ...rows]);
+          } else {
+            setPreview(rows);
+          }
+        } else {
+          setPreview([]);
+        }
+      },
+      error: () => setPreview([]),
+    });
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -100,99 +135,15 @@ export function UploadPage({
     setIsAnalyzing(true);
     setError('');
 
-    // Simulate analysis delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Generate mock analysis result
-    const result: AnalysisResult = {
-      id: `analysis-${Date.now()}`,
-      datasetName: file.name,
-      uploadDate: new Date().toISOString(),
-      status: 'complete',
-      dataset: {
-        rows: 1250,
-        columns: 6,
-        mean: 67842.5,
-        median: 65000,
-        mode: 71000,
-        max: 125000,
-        min: 28000,
-        stdDev: 18543.2,
-        variance: 343850624,
-      },
-      fairnessScore: 42,
-      fairnessLabel: 'Poor',
-      biasRisk: 'High',
-      reliabilityLevel: 'Moderate',
-      overallMessage: 'Significant bias patterns detected in the dataset. Immediate attention required for fair model deployment.',
-      detectedBiases: [
-        {
-          id: '1',
-          bias_type: 'Categorical Imbalance',
-          column: 'sex',
-          severity: 'High',
-          description: "'Male' dominates 78.9% of 'sex' values (entropy=0.74).",
-          ai_explanation: 'The dataset shows a severe gender imbalance, with male entries representing nearly 4 out of 5 records. This disparity can lead to models that perform poorly for underrepresented groups and perpetuate existing societal biases. The low entropy score (0.74 out of 1.0) indicates poor diversity in this categorical feature.',
-          definition: 'Categorical Imbalance occurs when one or more categories in a feature are significantly overrepresented compared to others, leading to skewed model predictions.',
-        },
-        {
-          id: '2',
-          bias_type: 'Outcome Disparity',
-          column: 'outcome',
-          severity: 'Critical',
-          description: 'Approval rate varies dramatically: Male (72.3%) vs Female (31.8%).',
-          ai_explanation: 'There is a critical disparity in outcomes between gender groups. Males are approved at more than twice the rate of females, suggesting potential discriminatory patterns in the underlying decision-making process. This could violate fairness regulations and ethical AI standards.',
-          definition: 'Outcome Disparity measures differences in decision outcomes across protected groups, indicating potential discrimination or unfair treatment.',
-        },
-        {
-          id: '3',
-          bias_type: 'Correlation Bias',
-          column: 'education, income',
-          severity: 'Moderate',
-          description: 'Strong correlation (0.89) between education and income may amplify socioeconomic bias.',
-          ai_explanation: 'The high correlation between education and income levels can create compound biases in predictive models. This relationship may disadvantage individuals from lower socioeconomic backgrounds who face systemic barriers to higher education, creating a feedback loop of inequality.',
-          definition: 'Correlation Bias occurs when highly correlated features create redundant bias signals, amplifying discrimination effects in model predictions.',
-        },
-        {
-          id: '4',
-          bias_type: 'Sample Size Insufficiency',
-          column: 'education (PhD)',
-          severity: 'Moderate',
-          description: 'PhD category has only 42 samples (3.4%), insufficient for reliable analysis.',
-          ai_explanation: 'The extremely small sample size for PhD holders makes statistical analysis unreliable for this group. Models trained on this data may produce unstable predictions for higher education levels, leading to unpredictable outcomes for this demographic.',
-          definition: 'Sample Size Insufficiency occurs when certain categories have too few examples to draw statistically valid conclusions or train reliable models.',
-        },
-      ],
-      assessment: {
-        fairness: 'This dataset exhibits poor fairness characteristics with a score of 42/100. Multiple critical bias patterns have been identified that could lead to discriminatory outcomes if used for model training without remediation.',
-        recommendations: [
-          'Implement stratified sampling to balance gender representation in the dataset',
-          'Apply reweighting techniques to equalize outcome distributions across protected groups',
-          'Consider collecting additional data for underrepresented categories (PhD education level)',
-          'Perform feature decorrelation analysis between education and income variables',
-          'Establish fairness constraints in model training (e.g., demographic parity or equalized odds)',
-          'Conduct regular fairness audits using metrics like disparate impact ratio and equal opportunity difference',
-        ],
-        conclusion: 'The dataset requires significant preprocessing and bias mitigation strategies before it can be responsibly used for machine learning applications. Without intervention, models trained on this data would likely perpetuate and amplify existing inequalities.',
-      },
-      distributions: [
-        { value: 28000, frequency: 12 },
-        { value: 35000, frequency: 45 },
-        { value: 42000, frequency: 98 },
-        { value: 49000, frequency: 156 },
-        { value: 56000, frequency: 189 },
-        { value: 63000, frequency: 234 },
-        { value: 70000, frequency: 198 },
-        { value: 77000, frequency: 167 },
-        { value: 84000, frequency: 98 },
-        { value: 91000, frequency: 34 },
-        { value: 98000, frequency: 15 },
-        { value: 105000, frequency: 4 },
-      ],
-    };
-
-    setIsAnalyzing(false);
-    onAnalysisComplete(result);
+    try {
+  const result = await analyzeDataset(file, { runGemini: enableAI, returnPlots: 'json' });
+      onAnalysisComplete(result);
+    } catch (e: any) {
+      const msg = String(e?.message || 'Analysis failed.');
+      setError(msg);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
@@ -320,11 +271,21 @@ export function UploadPage({
               </Card>
             )}
 
-            {/* Analyze Button */}
-            <div className="text-center">
-              <Button onClick={handleAnalyze} disabled={!file || isAnalyzing} size="lg" className="px-8">
-                {isAnalyzing ? 'Analyzing Dataset...' : 'Analyze / Detect Bias'}
+            {/* AI Toggle + Analyze Button */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                <Brain className={`w-4 h-4 ${enableAI ? 'text-purple-600' : 'text-slate-400'}`} />
+                <span className="text-sm text-slate-700">Enable AI Explanations</span>
+                <Switch checked={enableAI} onCheckedChange={(v) => setEnableAI(!!v)} />
+              </div>
+              <Button onClick={handleAnalyze} disabled={!file || isAnalyzing} size="lg" className="px-8 w-full md:w-auto">
+                {isAnalyzing ? (enableAI ? 'Analyzing + AI…' : 'Analyzing Dataset…') : 'Analyze / Detect Bias'}
               </Button>
+              {enableAI && (
+                <p className="text-xs text-slate-500 max-w-md text-center">
+                  Requires GEMINI_API_KEY in backend environment. If absent, AI explanations will be empty.
+                </p>
+              )}
             </div>
           </div>
         </div>
