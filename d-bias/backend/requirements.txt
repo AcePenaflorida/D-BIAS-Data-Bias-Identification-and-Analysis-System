@@ -11,3 +11,4 @@ python-dotenv
 kaleido
 reportlab
 Pillow
+flask-cors

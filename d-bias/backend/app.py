@@ -4,6 +4,13 @@ import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
 import os
+from datetime import timedelta
+
+# CORS support
+try:
+    from flask_cors import CORS
+except ImportError:
+    CORS = None
 
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
@@ -17,6 +24,19 @@ load_dotenv()
 print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
+
+# Allow slightly larger uploads and set JSON config if needed
+app.config.setdefault("MAX_CONTENT_LENGTH", 50 * 1024 * 1024)  # 50MB safeguard
+app.config.setdefault("JSONIFY_PRETTYPRINT_REGULAR", False)
+
+# Initialize CORS if library available
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+if CORS:
+    # In dev, allow any localhost origin to avoid port mismatch issues (5173/5174/etc.)
+    # For production, set FRONTEND_ORIGIN explicitly and tighten this.
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+else:
+    print("[WARN] flask-cors not installed; cross-origin requests from frontend may fail. Install with 'pip install flask-cors'.")
 
 
 def make_json_serializable(obj):
@@ -202,17 +222,66 @@ def analyze():
             plots_payload = {"error": str(e)}
 
     # also return visualizations as JSON-ready (not images) - we return nothing heavy here; frontends should call visualization module directly if needed
+    # Compute lightweight numeric summary for frontend display
+    try:
+        num_df = df.select_dtypes(include=[np.number])
+        rows, cols = df.shape
+        if num_df.shape[1] > 0:
+            means = num_df.mean(numeric_only=True)
+            medians = num_df.median(numeric_only=True)
+            variances = num_df.var(numeric_only=True)
+            stds = num_df.std(numeric_only=True)
+            # representative aggregation across numeric columns
+            numeric_summary = {
+                "rows": int(rows),
+                "columns": int(cols),
+                "mean": float(np.nanmean(means.values)) if len(means) else 0.0,
+                "median": float(np.nanmedian(medians.values)) if len(medians) else 0.0,
+                "mode": float(num_df.mode(dropna=True).iloc[0].mean()) if not num_df.mode(dropna=True).empty else 0.0,
+                "max": float(np.nanmax(num_df.max(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                "min": float(np.nanmin(num_df.min(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                "std_dev": float(np.nanmean(stds.values)) if len(stds) else 0.0,
+                "variance": float(np.nanmean(variances.values)) if len(variances) else 0.0,
+            }
+        else:
+            numeric_summary = {
+                "rows": int(rows),
+                "columns": int(cols),
+                "mean": 0.0,
+                "median": 0.0,
+                "mode": 0.0,
+                "max": 0.0,
+                "min": 0.0,
+                "std_dev": 0.0,
+                "variance": 0.0,
+            }
+    except Exception:
+        numeric_summary = {
+            "rows": int(df.shape[0]),
+            "columns": int(df.shape[1]),
+            "mean": 0.0,
+            "median": 0.0,
+            "mode": 0.0,
+            "max": 0.0,
+            "min": 0.0,
+            "std_dev": 0.0,
+            "variance": 0.0,
+        }
+
     response = {
         "bias_report": bias_report,
         "fairness_score": fairness_score,
         "summary": summary_text,
         "dataset_summary": reporter.summary(),
+        "numeric_summary": numeric_summary,
         "reliability": reporter.reliability()
     }
     # Map AI explanations to each bias entry (returns grouped structure). If no AI summary
     # was generated, map_biases will still return a structure (ai_explanation may be None).
     try:
-        mapped = map_biases(bias_report, summary_text)
+        # Use Gemini summary when available; otherwise fall back to reporter.summary()
+        ai_text_for_mapping = summary_text if summary_text else reporter.summary()
+        mapped = map_biases(bias_report, ai_text_for_mapping)
         response["mapped_biases"] = mapped
     except Exception as e:
         # don't fail the whole endpoint if mapping errors; include an error note

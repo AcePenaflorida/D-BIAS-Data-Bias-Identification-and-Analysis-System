@@ -22,6 +22,7 @@ export interface AnalysisResult {
   fairnessLabel: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Critical';
   biasRisk: 'Low' | 'Moderate' | 'High' | 'Critical';
   reliabilityLevel: 'High' | 'Moderate' | 'Low';
+  reliabilityMessage?: string;
   overallMessage: string;
   detectedBiases: Array<{
     id: string;
@@ -38,6 +39,13 @@ export interface AnalysisResult {
     conclusion: string;
   };
   distributions: any[];
+  rawBiasReport?: any[];
+  plots?: {
+    fig1?: { plotly?: any; png_base64?: string | null } | null;
+    fig2?: { plotly?: any; png_base64?: string | null } | null;
+    fig3?: { plotly?: any; png_base64?: string | null } | null;
+    error?: string;
+  };
 }
 
 export default function App() {
@@ -84,15 +92,17 @@ export default function App() {
           onViewHistory={handleViewHistory}
         />
       ) : (
-        <Dashboard
-          result={analysisResult!}
-          onBackToUpload={handleBackToUpload}
-          isAuthenticated={isAuthenticated}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          userHistory={userHistory}
-          onViewHistory={handleViewHistory}
-        />
+        analysisResult && (
+          <Dashboard
+            result={analysisResult}
+            onBackToUpload={handleBackToUpload}
+            isAuthenticated={isAuthenticated}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            userHistory={userHistory}
+            onViewHistory={handleViewHistory}
+          />
+        )
       )}
     </div>
   );

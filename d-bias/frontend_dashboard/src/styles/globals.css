@@ -127,6 +127,12 @@
   body {
     @apply bg-background text-foreground;
   }
+
+    /* Fallback spin animation in case Tailwind's animate-spin utility isn't generated */
+    @keyframes dbias-spin {
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin { animation: dbias-spin 1s linear infinite; }
 }
 
 /**
