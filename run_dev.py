@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# TEST
 """
 Run D-BIAS backend (Flask) and frontend (Vite) together.
 
