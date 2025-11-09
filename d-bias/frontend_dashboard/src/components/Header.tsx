@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Logo from '../assets/d-bias-logo.svg';
 import { User, LogIn, LogOut, History } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -48,10 +49,10 @@ export function Header({
     <>
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg" />
-            <span className="text-slate-900">D-BIAS</span>
-          </div>
+            <div className="flex items-center gap-2">
+              <img src={Logo} alt="D-BIAS" className="w-8 h-8 object-contain" />
+              <span className="text-slate-900 font-semibold">D-BIAS</span>
+            </div>
 
           <div className="flex items-center gap-3">
             {isAuthenticated ? (

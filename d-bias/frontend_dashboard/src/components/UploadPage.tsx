@@ -232,7 +232,7 @@ export function UploadPage({
           <div className="flex-1 max-w-4xl mx-auto">
             {/* Welcome Message */}
             <div className="text-center mb-12">
-              <h1 className="text-slate-900 mb-3">D-BIAS</h1>
+              <h1 className="text-slate-900 mb-3 font-semibold">D-BIAS</h1>
               <p className="text-slate-600 text-lg">Your data bias detection companion</p>
             </div>
 
