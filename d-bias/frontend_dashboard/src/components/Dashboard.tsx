@@ -5,6 +5,8 @@ import { Button } from './ui/button';
 import { Header } from './Header';
 import { StatCard } from './StatCard';
 import { BiasCard } from './BiasCard';
+import { ExtendedBiasCard } from './ExtendedBiasCard';
+import { BiasCorrelationTable } from './BiasCorrelationTable';
 import { SidePanel } from './SidePanel';
 import { DistributionChart } from './charts/DistributionChart';
 import { BiasFrequencyChart } from './charts/BiasFrequencyChart';
@@ -222,13 +224,22 @@ export function Dashboard({
               )}
             </div>
 
-            {/* Detected Bias Summary */}
-            <div className="mb-8">
-              <h2 className="text-slate-900 mb-4">Detected Bias Summary</h2>
+            {/* Structured Bias Results */}
+            <div className="mb-10 space-y-6">
+              <h2 className="text-slate-900">Detected Biases</h2>
+              {/* Correlation / identical feature table */}
+              <BiasCorrelationTable biases={result.detectedBiases} />
               <div className="space-y-4">
-                {result.detectedBiases.map((bias) => (
-                  <BiasCard key={bias.id} bias={bias} />
-                ))}
+                {result.detectedBiases.map((bias) => {
+                  // Use extended card when AI explanation contains structured tokens
+                  const ai = bias.ai_explanation || '';
+                  const hasStructured = /(Meaning|Harm|Impact|Fix)\s*:/i.test(ai);
+                  return hasStructured ? (
+                    <ExtendedBiasCard key={bias.id} bias={bias} />
+                  ) : (
+                    <BiasCard key={bias.id} bias={bias} />
+                  );
+                })}
               </div>
             </div>
 

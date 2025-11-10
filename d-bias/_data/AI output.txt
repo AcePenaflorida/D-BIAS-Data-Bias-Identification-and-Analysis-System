@@ -1,0 +1,812 @@
+🤖 AI-GENERATED SUMMARY
+================================================================================
+Here is a detailed, structured explanation of the biases detected in your dataset.
+
+### Individual Bias Explanations
+
+**bias_0001:**
+*   **Feature(s):** Gender
+*   **Bias Type:** Categorical Imbalance
+*   **Severity:** Moderate
+
+*   **Meaning:** The dataset is almost perfectly balanced between genders, with 'Female' making up **50.1%** of the entries. The entropy score of **1.00** confirms this is a near-ideal 50/50 split for a binary category.
+*   **Harm:** The 'Moderate' severity label from the detection tool is likely a misclassification. In reality, this level of balance is highly desirable. There is no significant harm; a model trained on this data would have an equal opportunity to learn from both male and female examples.
+*   **Impact:** This balance is beneficial. It reduces the risk that a predictive model (e.g., for health outcomes or fitness recommendations) would perform better for one gender than another.
+*   **Severity Explanation:** The 'Moderate' severity rating is misleading here. An entropy of 1.0 for a binary feature signifies maximum diversity (perfect balance), which is the opposite of a problematic bias.
+*   **Fix:** No action is required. This feature is well-represented and can be used as-is.
+
+**bias_0002:**
+*   **Feature(s):** meal_name
+*   **Bias Type:** Categorical Imbalance
+*   **Severity:** High
+
+*   **Meaning:** The column 'meal_name' contains a single value, 'Other', for **100.0%** of the 20,000 rows. This means the feature is a constant and provides no unique information. The entropy of **-0.00** mathematically confirms its lack of variability.
+*   **Harm:** A feature with no variation is useless for machine learning. It cannot help a model distinguish between different outcomes because it's the same for every record. It adds noise and computational overhead without any predictive power.
+*   **Impact:** If used in a model, this feature would be ignored or could even cause errors in some algorithms. It offers no value for understanding diet patterns or predicting any health-related target.
+*   **Severity Explanation:** 'High' severity is assigned because the feature has zero informational content, making it completely redundant.
+*   **Fix:** This column should be removed from the dataset before any modeling. It serves no analytical purpose.
+
+**bias_0003:**
+*   **Feature(s):** Weight (kg) ↔ Fat_Percentage
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.779**) between a person's weight and their body fat percentage. This indicates that as an individual's weight increases, their fat percentage also tends to increase in a highly predictable manner within this dataset.
+*   **Harm:** Including both features in a model can cause multicollinearity. This confuses the model about which feature is responsible for a given effect, making it difficult to interpret the individual importance of weight versus fat percentage. It can also make the model's predictions less stable.
+*   **Impact:** A model might incorrectly attribute a health risk solely to weight when fat percentage is the more direct cause, or vice versa. This could lead to generalized advice (e.g., "lose weight") instead of more specific guidance (e.g., "focus on fat loss while preserving muscle").
+*   **Severity Explanation:** 'High' severity (r > 0.7) means the two features share a large amount of information, making them redundant for many modeling tasks.
+*   **Fix:** Choose one of the two features to include in the model based on domain knowledge (e.g., 'Fat_Percentage' might be more clinically relevant than 'Weight'). Alternatively, combine them into a new feature or use dimensionality reduction techniques like PCA.
+
+**bias_0004:**
+*   **Feature(s):** Weight (kg) ↔ BMI
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.856**) exists between 'Weight (kg)' and 'BMI'. This is expected, as BMI is directly calculated using weight (BMI = kg/m²). They essentially measure related aspects of body size.
+*   **Harm:** This is a classic case of multicollinearity. Since one feature is a component of the other, they provide overlapping information. A model struggles to isolate their independent effects, leading to unreliable coefficient estimates for each feature.
+*   **Impact:** If a model tries to predict a health outcome, it might assign high importance to weight and low importance to BMI (or vice versa), not because one is irrelevant, but because their shared information makes it impossible to tell them apart. This clouds the understanding of what drives the prediction.
+*   **Severity Explanation:** 'High' severity is appropriate because the correlation is very strong, indicating a high degree of informational redundancy.
+*   **Fix:** Remove one of the features. Since 'BMI' also incorporates height, it is often preferred over 'Weight' alone, but the choice depends on the specific modeling goal.
+
+**bias_0005:**
+*   **Feature(s):** Weight (kg) ↔ Calories
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is an extremely strong positive correlation (**r=0.978**) between 'Weight (kg)' and 'Calories'. In this dataset, as a person's weight increases, their daily calorie intake increases almost perfectly in lockstep.
+*   **Harm:** This near-perfect correlation suggests that the 'Calories' feature might have been calculated based on weight (e.g., using a basal metabolic rate formula where weight is the primary input). Including both is highly redundant and introduces severe multicollinearity, making the model unstable.
+*   **Impact:** A model attempting to predict weight loss success would be unable to determine if success is driven by calorie intake or the starting weight itself, as the two are almost interchangeable in this dataset. This could lead to flawed or trivial conclusions.
+*   **Severity Explanation:** 'High' severity is warranted due to the near-perfect correlation (r close to 1.0), which is a critical issue for most regression models.
+*   **Fix:** Investigate if 'Calories' is directly derived from 'Weight'. If so, one must be removed. 'Calories' might be the target variable in some contexts, so careful feature selection is crucial.
+
+**bias_0006:**
+*   **Feature(s):** Weight (kg) ↔ BMI_calc
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** The correlation between 'Weight (kg)' and 'BMI_calc' is very strong (**r=0.856**). This is identical to the correlation with the 'BMI' column, suggesting 'BMI_calc' is a duplicate or a re-calculation of 'BMI'.
+*   **Harm:** This introduces data redundancy. Having duplicate or near-duplicate features adds no new information and unnecessarily increases the complexity of the dataset and the risk of multicollinearity in models.
+*   **Impact:** Using both 'Weight' and 'BMI_calc' (along with 'BMI') would amplify the multicollinearity issues, making it even harder for a model to produce a reliable and interpretable result.
+*   **Severity Explanation:** 'High' severity reflects the strong linear relationship and the redundancy problem it creates.
+*   **Fix:** Remove the redundant BMI column. Compare 'BMI' and 'BMI_calc' to confirm they are duplicates, and then drop one of them.
+
+**bias_0007:**
+*   **Feature(s):** Weight (kg) ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong negative correlation (**r=-0.727**) between 'Weight (kg)' and 'protein_per_kg'. This indicates that as an individual's weight increases, their protein intake per kilogram of body weight tends to decrease.
+*   **Harm:** This relationship might be an artifact of how the data was generated. For example, if total protein intake is relatively constant across individuals, then dividing it by a larger weight will naturally result in a smaller 'protein_per_kg' value. This is a mathematical dependency that can cause multicollinearity.
+*   **Impact:** A nutrition recommendation model might incorrectly conclude that heavier individuals should consume a lower ratio of protein, when in reality, the data simply reflects this mathematical relationship. This could lead to flawed dietary advice.
+*   **Severity Explanation:** 'High' severity is assigned because the strong negative correlation indicates that the two features are not independent and will likely interfere with each other in a model.
+*   **Fix:** Be cautious about using both features. If 'protein_per_kg' was calculated using 'Weight', it is generally better to use the base features (e.g., 'Total Protein' and 'Weight') and let the model learn the relationship, rather than including a feature that is a direct ratio.
+
+**bias_0008:**
+*   **Feature(s):** Weight (kg) ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong positive correlation (**r=0.737**) exists between 'Weight (kg)' and 'cal_balance' (calorie balance). This suggests that heavier individuals in this dataset tend to have a higher calorie surplus (or a smaller deficit).
+*   **Harm:** This could be another derived feature. If 'cal_balance' is calculated using a formula involving basal metabolic rate (which depends on weight), this correlation is expected. Using both in a model introduces redundancy and multicollinearity.
+*   **Impact:** A model built to predict weight change might struggle to separate the influence of a person's starting weight from their ongoing calorie balance, as the two are so closely linked in the data. This makes it difficult to determine the true driver of the outcome.
+*   **Severity Explanation:** 'High' severity is justified by the strong correlation, which indicates a significant overlap in the information provided by these two features.
+*   **Fix:** Investigate the formula for 'cal_balance'. If it directly uses weight, avoid using both features simultaneously. Choose the one that is most relevant to the prediction task.
+
+**bias_0009:**
+*   **Feature(s):** Weight (kg) ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** An extremely strong positive correlation (**r=0.982**) is present between 'Weight (kg)' and 'lean_mass_kg'. This is logical, as lean body mass (muscles, bones, organs) is a major component of total body weight.
+*   **Harm:** The two features are nearly interchangeable. Including both provides very little new information and creates severe multicollinearity. The model cannot distinguish their independent contributions.
+*   **Impact:** For a model predicting athletic performance, it would be nearly impossible to tell if performance is driven by total weight or lean mass, as they move together so closely. This would limit the model's ability to provide specific insights.
+*   **Severity Explanation:** 'High' severity is appropriate for this near-perfect correlation, which presents a critical issue for model stability and interpretability.
+*   **Fix:** These features should not be used in the same model. Choose one, likely 'lean_mass_kg' if the goal is to understand body composition, or create a new feature like the ratio of lean mass to total weight.
+
+**bias_0010:**
+*   **Feature(s):** Height (m) ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.477**) between 'Height (m)' and 'lean_mass_kg'. This is expected; taller people are generally larger and thus tend to have more lean body mass.
+*   **Harm:** This correlation is not strong enough to cause severe multicollinearity but indicates some informational overlap. A model might slightly over-attribute effects to height that are partially due to the associated increase in lean mass.
+*   **Impact:** In a model predicting strength, the effect of being tall might be slightly conflated with the effect of having more muscle mass. This could make the independent contribution of height appear larger than it is.
+*   **Severity Explanation:** 'Moderate' severity suggests that while the features are related, they are not redundant. Their relationship should be noted, but they can often be used together in a model, especially with regularization.
+*   **Fix:** For most models, no immediate action is needed. However, it's good practice to be aware of this relationship when interpreting feature importance. If multicollinearity becomes an issue, consider feature selection.
+
+**bias_0011:**
+*   **Feature(s):** Max_BPM ↔ pct_HRR
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate negative correlation (**r=-0.512**) between maximum heart rate ('Max_BPM') and the percentage of Heart Rate Reserve ('pct_HRR'). This suggests that sessions where a person's max heart rate was higher tended to correspond to a lower average intensity relative to their full capacity (HRR).
+*   **Harm:** This relationship might be counter-intuitive but could stem from how the metrics are calculated or the nature of the workouts. 'pct_HRR' is a measure of average intensity, while 'Max_BPM' is a peak measure. A short, intense interval might hit a high Max_BPM but result in a moderate average intensity. This dependency can confuse a model.
+*   **Impact:** A model predicting workout effectiveness might struggle to disentangle the effects of peak exertion (Max_BPM) from sustained intensity (pct_HRR), potentially leading to confusing recommendations about workout structure.
+*   **Severity Explanation:** 'Moderate' severity indicates a noticeable but not critical relationship. The features provide distinct but partially overlapping information.
+*   **Fix:** Both features can likely be used, but their relationship should be considered. Investigate the calculation of 'pct_HRR' to understand the dependency. If issues arise, feature engineering could create a more independent metric.
+
+**bias_0012:**
+*   **Feature(s):** Max_BPM ↔ pct_maxHR
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate negative correlation (**r=-0.559**) exists between the peak heart rate achieved in a session ('Max_BPM') and the average intensity as a percentage of maximum heart rate ('pct_maxHR'). This is similar to the previous bias, indicating that workouts hitting a higher peak heart rate don't necessarily have a higher average intensity.
+*   **Harm:** This suggests that 'Max_BPM' and 'pct_maxHR' capture different aspects of a workout (peak vs. average effort). However, their statistical relationship can still introduce some multicollinearity, making it harder for a model to weigh their independent importance accurately.
+*   **Impact:** A fitness app using this model might give unclear advice, unable to distinguish whether a user should aim for higher peak heart rates or maintain a higher average percentage of their max HR for better results.
+*   **Severity Explanation:** 'Moderate' severity means the correlation is significant enough to be aware of but may not require immediate feature removal.
+*   **Fix:** Acknowledge the relationship during analysis. When building models, check if the presence of both features affects stability. If so, select the one that aligns better with the desired outcome (e.g., 'pct_maxHR' for endurance, 'Max_BPM' for peak performance).
+
+**bias_0013:**
+*   **Feature(s):** Avg_BPM ↔ pct_HRR
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a very strong positive correlation (**r=0.857**) between 'Avg_BPM' (average heart rate during a session) and 'pct_HRR' (percentage of Heart Rate Reserve). This is expected, as 'pct_HRR' is a normalized measure of average intensity derived directly from 'Avg_BPM'.
+*   **Harm:** The features are largely redundant. 'pct_HRR' is essentially 'Avg_BPM' adjusted for an individual's resting and max heart rates. Using both introduces significant multicollinearity, confusing the model about which feature to use.
+*   **Impact:** A model might produce unstable results, with the importance of 'Avg_BPM' and 'pct_HRR' fluctuating wildly depending on the data sample. This makes the model unreliable for explaining what drives workout effectiveness.
+*   **Severity Explanation:** 'High' severity is warranted because the features are mathematically linked and provide very similar information.
+*   **Fix:** Choose only one of these features. 'pct_HRR' is often preferred as it represents a personalized measure of effort, making it more comparable across different individuals than raw 'Avg_BPM'.
+
+**bias_0014:**
+*   **Feature(s):** Avg_BPM ↔ pct_maxHR
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.842**) exists between 'Avg_BPM' and 'pct_maxHR'. Similar to the previous bias, this is because 'pct_maxHR' is a normalized metric calculated directly from 'Avg_BPM'. It represents average heart rate as a percentage of the individual's maximum.
+*   **Harm:** This is another clear case of multicollinearity due to feature derivation. They tell the same story, just on different scales (absolute vs. relative). Including both is redundant and detrimental to model interpretability and stability.
+*   **Impact:** Imagine a model predicting calorie burn. It wouldn't be able to tell you if burn is caused by a high 'Avg_BPM' or a high 'pct_maxHR' because, in this dataset, they are almost the same thing.
+*   **Severity Explanation:** 'High' severity reflects the strong, direct mathematical relationship between the two features.
+*   **Fix:** Remove one of the features. 'pct_maxHR' is a standardized measure of intensity and is generally more useful for comparing effort levels between people with different fitness levels.
+
+**bias_0015:**
+*   **Feature(s):** Session_Duration (hours) ↔ Calories_Burned
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.814**) between the duration of a workout session and the number of calories burned. This is intuitive: the longer you exercise, the more calories you burn.
+*   **Harm:** While logical, this strong relationship means the two features provide overlapping information. In a model, it can be difficult to separate the effect of duration from the effect of total energy expenditure, as they are so closely linked.
+*   **Impact:** If predicting fitness improvement, a model might struggle to determine if improvement is due to longer workouts or the resulting higher calorie burn. This could lead to simplistic advice like "work out longer" without considering workout intensity.
+*   **Severity Explanation:** 'High' severity is assigned because the strong correlation indicates a high degree of redundancy.
+*   **Fix:** Consider creating a new feature like 'Calories_Burned_per_hour' (intensity) to use alongside 'Session_Duration'. Alternatively, if 'Calories_Burned' is the target variable, 'Session_Duration' would be a key predictor; if not, choose one of the two for modeling to avoid multicollinearity.
+
+**bias_0016:**
+*   **Feature(s):** Session_Duration (hours) ↔ Workout_Frequency (days/week)
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.638**) exists between the duration of individual workout sessions and how many days a week a person works out. This suggests that people who train more frequently also tend to have longer training sessions.
+*   **Harm:** This reflects a behavioral pattern in the dataset. It creates some multicollinearity, where the model might find it hard to distinguish between the benefits of frequent training and the benefits of long training sessions.
+*   **Impact:** A recommendation engine might not be able to give nuanced advice. It might not know whether to advise a user to work out more often for shorter periods or less often for longer periods, as the most active users in the data do both.
+*   **Severity Explanation:** 'Moderate' severity indicates a noticeable pattern. The features are linked but still capture different aspects of a training regimen (frequency vs. duration).
+*   **Fix:** Both features can likely be used together, but their interaction should be considered. One could engineer a 'Total_Weekly_Training_Hours' feature (duration * frequency) to capture the combined effect.
+
+**bias_0017:**
+*   **Feature(s):** Session_Duration (hours) ↔ Experience_Level
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.758**) between the duration of workout sessions and the user's experience level. This indicates that more experienced individuals in this dataset engage in significantly longer workouts.
+*   **Harm:** The two features are closely linked, leading to multicollinearity. It's difficult for a model to determine if a positive outcome is due to experience itself (better technique, efficiency) or simply the longer time spent training.
+*   **Impact:** A model might overstate the benefits of simply being "experienced" while the real driver is the higher training volume associated with that experience level. This could discourage beginners who can't yet sustain long workouts.
+*   **Severity Explanation:** 'High' severity reflects a strong relationship that makes it hard to isolate the independent effects of each feature.
+*   **Fix:** Be cautious when using both. One approach is to select the feature more directly related to the outcome. Another is to analyze the effect of duration *within* each experience level to understand the relationship better.
+
+**bias_0018:**
+*   **Feature(s):** Session_Duration (hours) ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate negative correlation (**r=-0.529**) between workout duration and calorie balance. This suggests that individuals who have longer workout sessions tend to have a lower calorie balance (i.e., they are in a greater calorie deficit or a smaller surplus).
+*   **Harm:** This relationship is expected, as longer workouts burn more calories, contributing to a lower calorie balance. However, this dependency introduces some multicollinearity, making it harder to separate the effects of exercise from diet.
+*   **Impact:** A weight management model might struggle to distinguish the impact of exercise duration from the impact of calorie balance itself, since people who exercise longer also tend to have a lower net calorie intake in this dataset.
+*   **Severity Explanation:** 'Moderate' severity is appropriate as the link is clear but not deterministic. Other factors besides workout duration affect calorie balance.
+*   **Fix:** Acknowledge this relationship in the analysis. If 'cal_balance' is derived using calories burned from exercise, the relationship is partly definitional. Using both may be acceptable, but interpreting their individual coefficients requires care.
+
+**bias_0019:**
+*   **Feature(s):** Session_Duration (hours) ↔ expected_burn
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** An extremely strong positive correlation (**r=0.944**) exists between the duration of a session and the 'expected_burn' of calories. This strongly implies that 'expected_burn' is a metric calculated directly from 'Session_Duration', perhaps using a standardized formula.
+*   **Harm:** The two features are almost perfectly redundant. Using both in a model creates severe multicollinearity and adds no new information. The model will be unstable and its coefficients uninterpretable.
+*   **Impact:** A model's results would be meaningless if it tried to use both features to predict an outcome. For example, it could not determine if workout effectiveness is due to duration or the expected calorie burn, as they are essentially the same variable.
+*   **Severity Explanation:** 'High' severity is assigned for the near-perfect correlation, which is a critical modeling issue.
+*   **Fix:** One of these features must be removed. Since 'expected_burn' seems to be a direct calculation from 'Session_Duration', it is the most likely candidate for removal to avoid data duplication.
+
+**bias_0020:**
+*   **Feature(s):** Calories_Burned ↔ Workout_Frequency (days/week)
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.583**) is found between the calories burned in a session and the weekly workout frequency. This suggests that people who train more often also tend to burn more calories in their individual workouts, perhaps due to higher intensity or fitness levels.
+*   **Harm:** This correlation introduces some multicollinearity. It makes it harder to isolate the benefits of high-frequency training versus high-energy-expenditure workouts.
+*   **Impact:** A model might find it difficult to recommend an optimal training strategy. It would be unclear whether to advise "train more often" or "burn more calories per session," as the data shows that frequent trainers are already doing both.
+*   **Severity Explanation:** 'Moderate' severity indicates a clear relationship that should be noted, but the features still offer distinct information.
+*   **Fix:** Both features can likely be used together. Creating a combined feature like 'Total_Weekly_Calories_Burned' might capture the overall effect and be a powerful predictor.
+
+**bias_0021:**
+*   **Feature(s):** Calories_Burned ↔ Experience_Level
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.697**, which is closer to high than moderate) between the number of calories burned in a session and the user's experience level. More experienced individuals tend to burn more calories per workout.
+*   **Harm:** This strong link creates multicollinearity. It's difficult for a model to distinguish whether better outcomes are due to experience (e.g., efficiency, ability to push harder) or simply the higher calorie expenditure that comes with it.
+*   **Impact:** A model might attribute success to the abstract concept of 'experience' when the more direct, measurable cause is the higher work output (calories burned). This could make the model's insights less actionable.
+*   **Severity Explanation:** 'High' severity (or close to it) is warranted because the two variables are strongly related, making it hard to disentangle their individual effects.
+*   **Fix:** Be selective about using both features in the same model. Consider analyzing the relationship within each experience level to see if calorie burn still has a separate effect.
+
+**bias_0022:**
+*   **Feature(s):** Calories_Burned ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong negative correlation (**r=-0.661**) exists between 'Calories_Burned' and 'cal_balance'. This is expected, as 'cal_balance' is likely calculated as (Calories In - Calories Out), and 'Calories_Burned' is a major part of 'Calories Out'.
+*   **Harm:** This is a definitional relationship. Including both in a model to predict something like weight change would be problematic. The model would be confused by this built-in mathematical link, leading to unreliable coefficients.
+*   **Impact:** A model would struggle to provide meaningful insights. It could not separate the effect of burning calories through exercise from the overall daily energy balance, as one is a direct input to the other.
+*   **Severity Explanation:** 'High' severity is appropriate because the relationship is at least partially definitional, causing significant multicollinearity.
+*   **Fix:** Do not use both features if 'cal_balance' is calculated using 'Calories_Burned'. Choose the one most relevant to your goal. If 'cal_balance' is the target, 'Calories_Burned' is a valid predictor. If not, 'cal_balance' is a more holistic measure of energy status.
+
+**bias_0023:**
+*   **Feature(s):** Calories_Burned ↔ expected_burn
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.774**) between the actual 'Calories_Burned' and the 'expected_burn'. This indicates that the formula used to calculate 'expected_burn' is a good, but not perfect, predictor of the actual calories burned.
+*   **Harm:** The features are highly related and provide very similar information. Using both introduces multicollinearity and may not add much predictive power over using just one. 'Calories_Burned' is the measured truth, while 'expected_burn' is an estimate.
+*   **Impact:** In a predictive model, the 'expected_burn' might absorb some of the predictive signal that rightfully belongs to the actual 'Calories_Burned', making the model harder to interpret.
+*   **Severity Explanation:** 'High' severity is justified because the two variables are measuring the same conceptual quantity (one estimated, one actual), leading to high redundancy.
+*   **Fix:** For modeling, it is almost always better to use the ground truth variable ('Calories_Burned') and discard the estimate ('expected_burn'). The estimate could be used to create a new feature, like the difference between expected and actual burn, to measure workout intensity versus expectation.
+
+**bias_0024:**
+*   **Feature(s):** Fat_Percentage ↔ BMI
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.902**) exists between 'Fat_Percentage' and 'BMI'. In this dataset, individuals with a higher BMI almost always have a higher body fat percentage.
+*   **Harm:** This creates severe multicollinearity. BMI is a measure of weight relative to height, while fat percentage measures body composition. Although they measure different things, they are so closely linked in this dataset that a model cannot separate their independent effects.
+*   **Impact:** A model predicting health risks (e.g., heart disease) would be unable to determine if the risk is more closely associated with high BMI or high body fat. This is a critical distinction, as body fat is often considered the more direct health indicator.
+*   **Severity Explanation:** 'High' severity is appropriate for such a strong correlation, which makes the features nearly redundant for modeling purposes.
+*   **Fix:** Do not include both features in the same model. Based on clinical relevance, 'Fat_Percentage' is often a more precise measure of health risk than 'BMI'. Choose one based on the specific question being answered.
+
+**bias_0025:**
+*   **Feature(s):** Fat_Percentage ↔ Calories
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.760**) between 'Fat_Percentage' and daily 'Calories' intake. This suggests that individuals with a higher body fat percentage also tend to consume more calories.
+*   **Harm:** This relationship introduces multicollinearity. It makes it difficult for a model to disentangle whether a health outcome is related to body composition (high fat percentage) or dietary habits (high calorie intake).
+*   **Impact:** A health recommendation model might struggle to provide specific advice. It might not be able to determine if it should recommend focusing on fat loss or on reducing calorie intake, as both are so closely linked in the user base.
+*   **Severity Explanation:** 'High' severity is assigned because the strong correlation indicates that the two features share a significant amount of predictive information.
+*   **Fix:** Be cautious when using both features. It may be more insightful to analyze the effect of calories on outcomes *after* controlling for fat percentage (or vice versa) using statistical techniques. For simpler models, feature selection may be necessary.
+
+**bias_0026:**
+*   **Feature(s):** Fat_Percentage ↔ BMI_calc
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.902**) exists between 'Fat_Percentage' and 'BMI_calc'. This is identical to the correlation with 'BMI', further confirming that 'BMI_calc' is a duplicate of the 'BMI' column.
+*   **Harm:** This is redundant information. Including 'Fat_Percentage', 'BMI', and 'BMI_calc' in a model would create severe multicollinearity, making the model highly unstable and uninterpretable.
+*   **Impact:** Any model interpretation would be unreliable. The model might assign arbitrary importance to 'BMI' versus 'BMI_calc', which is meaningless as they are the same.
+*   **Severity Explanation:** 'High' severity is due to the extreme redundancy and the critical modeling problems it causes.
+*   **Fix:** Remove the duplicate column 'BMI_calc'. Then, decide whether to use 'Fat_Percentage' or 'BMI' based on the modeling goal, as explained for bias_0024.
+
+**bias_0027:**
+*   **Feature(s):** Fat_Percentage ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate negative correlation (**r=-0.603**) is observed between 'Fat_Percentage' and 'protein_per_kg'. This indicates that individuals with a higher body fat percentage tend to consume less protein relative to their body weight.
+*   **Harm:** This introduces some multicollinearity. It may be difficult for a model to separate the effects of poor body composition (high fat) from potentially suboptimal dietary habits (lower relative protein intake).
+*   **Impact:** A model predicting muscle gain might struggle to determine if progress is hindered more by a high starting fat percentage or a low protein intake per kilogram, as the two are linked in this dataset.
+*   **Severity Explanation:** 'Moderate' severity suggests a significant but not overwhelming relationship. The features are related but still offer unique information.
+*   **Fix:** Both features can likely be used, but their relationship should be considered when interpreting model results. For a more nuanced analysis, one could examine the effect of protein intake at different levels of body fat.
+
+**bias_0028:**
+*   **Feature(s):** Fat_Percentage ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.594**) between 'Fat_Percentage' and 'cal_balance'. This suggests that people with higher body fat percentages are more likely to be in a calorie surplus.
+*   **Harm:** This relationship makes sense (a calorie surplus can lead to fat gain), but it introduces multicollinearity. A model might find it difficult to distinguish between the state of having a high fat percentage and the action of maintaining a positive calorie balance.
+*   **Impact:** For a model predicting future weight gain, it would be hard to separate the risk associated with a person's current body composition from the risk associated with their current energy balance.
+*   **Severity Explanation:** 'Moderate' severity indicates a clear relationship that should be accounted for, but it's not so strong as to make the features completely redundant.
+*   **Fix:** Be mindful of this correlation during modeling. If building an explanatory model, use statistical methods to control for one variable while assessing the other. If building a predictive model, test whether including both improves performance.
+
+**bias_0029:**
+*   **Feature(s):** Fat_Percentage ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong positive correlation (**r=0.659**, which is on the cusp of high) exists between 'Fat_Percentage' and 'lean_mass_kg'. This is counter-intuitive; one might expect a negative correlation. This positive link suggests that in this dataset, larger individuals tend to have more of both fat and lean mass, rather than trading one for the other.
+*   **Harm:** This relationship can be confusing and introduces multicollinearity. It makes it very difficult for a model to separate the effects of having high body fat from the effects of having high lean mass.
+*   **Impact:** A model predicting metabolic rate might produce a confusing result. It would struggle to assign the correct positive effect to lean mass and the correct negative effect to fat percentage because individuals with more of one tend to have more of the other.
+*   **Severity Explanation:** 'High' (or high-moderate) severity is assigned because this strong, potentially non-obvious relationship complicates interpretation and can make a model unstable.
+*   **Fix:** These features are difficult to use together. It would be better to use a single, more holistic measure of body composition, such as the ratio of lean mass to fat mass, or to use only one of the two based on domain expertise.
+
+**bias_0030:**
+*   **Feature(s):** Water_Intake (liters) ↔ Calories
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.412**) is found between 'Water_Intake (liters)' and 'Calories'. This suggests that people who consume more calories also tend to drink more water.
+*   **Harm:** This reflects a dietary pattern. It can introduce a small amount of multicollinearity, where the effects of hydration might be partially mixed with the effects of overall food intake.
+*   **Impact:** A model predicting energy levels might slightly over-emphasize the role of water intake, when part of the observed effect is actually due to the higher calorie consumption that accompanies it.
+*   **Severity Explanation:** 'Moderate' severity is appropriate for a correlation of this level. It's not strong enough to be a critical issue but indicates a relationship worth noting.
+*   **Fix:** No immediate fix is necessary. It is simply important to be aware of this behavioral link when interpreting the model's results for either feature.
+
+**bias_0031:**
+*   **Feature(s):** Water_Intake (liters) ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.435**) between 'Water_Intake (liters)' and 'lean_mass_kg'. This suggests that individuals with more lean body mass tend to drink more water, which is biologically plausible as muscle contains a high percentage of water.
+*   **Harm:** This relationship introduces some multicollinearity. A model might find it slightly difficult to distinguish between the benefits of having more lean mass and the benefits of being well-hydrated.
+*   **Impact:** A performance prediction model might attribute some of the positive effects of muscle mass to water intake, or vice versa, slightly clouding the interpretation of what truly drives performance.
+*   **Severity Explanation:** 'Moderate' severity indicates a noticeable but not critical relationship.
+*   **Fix:** Both features can likely be used together. Acknowledge the link when interpreting feature importance scores.
+
+**bias_0032:**
+*   **Feature(s):** Workout_Frequency (days/week) ↔ Experience_Level
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.836**) exists between workout frequency and experience level. This indicates that in this dataset, more experienced individuals work out much more frequently.
+*   **Harm:** This creates significant multicollinearity. It is very difficult for a model to separate the effects of being experienced from the effects of training frequently, as they are almost the same thing in this data.
+*   **Impact:** A model predicting fitness goal achievement might conclude that 'experience' is key, when the actual driver is the high training frequency associated with it. This provides a less actionable insight.
+*   **Severity Explanation:** 'High' severity is assigned because the very strong correlation makes the two features highly redundant.
+*   **Fix:** Avoid using both features in the same model. Choose one that best represents the concept you want to measure. 'Workout_Frequency' is a concrete, behavioral metric, while 'Experience_Level' is more of a label; the former is often more useful for modeling.
+
+**bias_0033:**
+*   **Feature(s):** Workout_Frequency (days/week) ↔ expected_burn
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.619**) is observed between how often someone works out and their 'expected_burn' per session. This suggests that people who train more frequently are also expected to burn more calories in each workout.
+*   **Harm:** This introduces multicollinearity. The model may struggle to differentiate between the benefits of frequent training and the benefits of higher-energy workouts.
+*   **Impact:** A recommendation system might get confused, unsure whether to advise a user to increase workout frequency or aim for a higher calorie burn per session, since the data shows these behaviors often go hand-in-hand.
+*   **Severity Explanation:** 'Moderate' severity indicates a clear relationship that complicates interpretation but doesn't make the features completely unusable together.
+*   **Fix:** Consider creating a combined metric like 'total weekly expected burn' (frequency * expected_burn) to capture the overall training load. Otherwise, be mindful of their relationship when interpreting model outputs.
+
+**bias_0034:**
+*   **Feature(s):** Experience_Level ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate negative correlation (**r=-0.420**) between 'Experience_Level' and 'cal_balance'. This suggests that more experienced individuals are more likely to be in a caloric deficit or a smaller surplus.
+*   **Harm:** This behavioral link can introduce some multicollinearity. It makes it harder for a model to separate the effects of experience (e.g., better discipline, knowledge) from the direct effect of maintaining a lower calorie balance.
+*   **Impact:** A model predicting body composition changes might attribute success to 'experience' when the more direct driver is the calorie balance that experienced individuals in this dataset tend to maintain.
+*   **Severity Explanation:** 'Moderate' severity indicates a noticeable relationship that doesn't require immediate action but should be considered during analysis.
+*   **Fix:** Be aware of this correlation when interpreting the model. Both features can likely be used, but their intertwined nature should be acknowledged.
+
+**bias_0035:**
+*   **Feature(s):** Experience_Level ↔ expected_burn
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong positive correlation (**r=0.736**) exists between a user's experience level and their 'expected_burn' per workout. This means the system expects more experienced users to burn more calories.
+*   **Harm:** This strong link creates multicollinearity. A model cannot easily distinguish between effects caused by a user's experience level and effects caused by the high workout intensity (as measured by expected_burn) that is typical for that level.
+*   **Impact:** If a model predicts injury risk, it might incorrectly attribute risk to 'experience' when the real cause is the high-intensity workouts (high expected burn) that experienced users perform.
+*   **Severity Explanation:** 'High' severity is assigned because the strong correlation makes the two features share a lot of information, making them partially redundant.
+*   **Fix:** Avoid using both in the same model. 'expected_burn' is a more quantitative measure of a workout's nature than the 'Experience_Level' label, so it may be the more valuable feature.
+
+**bias_0036:**
+*   **Feature(s):** BMI ↔ Calories
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.838**) is found between 'BMI' and 'Calories'. Individuals with a higher BMI tend to consume significantly more calories in this dataset.
+*   **Harm:** This creates strong multicollinearity. It is difficult to separate the effects of having a high BMI from the effects of having a high-calorie diet. This might also be due to calorie goals being *set* based on BMI or weight.
+*   **Impact:** A model predicting diabetes risk would struggle to determine if the risk is driven more by body size (BMI) or by diet (Calories), as the two are so closely linked in the data.
+*   **Severity Explanation:** 'High' severity reflects the very strong relationship, which presents a significant challenge for model interpretability.
+*   **Fix:** Investigate if the calorie data represents goals calculated from BMI. If so, using both is highly problematic. If not, be very cautious and consider using only one of the features, or use advanced modeling techniques that can handle collinearity.
+
+**bias_0037:**
+*   **Feature(s):** BMI ↔ BMI_calc
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'BMI' and 'BMI_calc'. This means that for every row, the value in the 'BMI' column is identical to the value in the 'BMI_calc' column. They are exact duplicates.
+*   **Harm:** This is a case of perfect multicollinearity. Including duplicate features adds zero new information, increases model complexity, and can cause some algorithms (like linear regression) to fail or produce nonsensical results.
+*   **Impact:** At best, the model's performance will not improve. At worst, the model will be unstable or its interpretation will be nonsensical, as it tries to assign importance to two identical inputs.
+*   **Severity Explanation:** 'High' severity is assigned because a perfect correlation represents a critical data redundancy issue that must be fixed.
+*   **Fix:** One of these columns must be removed. Since they are identical, it does not matter which one you choose to drop.
+
+**bias_0038:**
+*   **Feature(s):** BMI ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate negative correlation (**r=-0.635**) exists between 'BMI' and 'protein_per_kg'. Individuals with a higher BMI tend to have a lower protein intake relative to their total body weight.
+*   **Harm:** This relationship is likely a mathematical artifact. Since BMI is strongly correlated with weight, and weight is in the denominator of 'protein_per_kg', this dependency is expected. It introduces multicollinearity.
+*   **Impact:** A nutrition model might incorrectly conclude that a high BMI is associated with a need for a lower protein-to-weight ratio, when this is just a reflection of the calculation. This could lead to poor dietary recommendations.
+*   **Severity Explanation:** 'Moderate' severity indicates a significant relationship that complicates modeling, largely due to the way 'protein_per_kg' is calculated.
+*   **Fix:** It is generally not recommended to use both a composite measure (like BMI) and a ratio that depends on one of its components (weight). It's better to use the base features ('Total Protein', 'Weight', 'Height') and let the model figure out the relationships.
+
+**bias_0039:**
+*   **Feature(s):** BMI ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.633**) is observed between 'BMI' and 'cal_balance'. This suggests that individuals with a higher BMI are more likely to be in a calorie surplus in this dataset.
+*   **Harm:** This creates multicollinearity, making it difficult for a model to distinguish between the state of having a high BMI and the behavior of consuming excess calories.
+*   **Impact:** In a model predicting future health outcomes, it would be unclear if the risk comes from the existing condition (high BMI) or the ongoing behavior (positive calorie balance).
+*   **Severity Explanation:** 'Moderate' severity is assigned because the relationship is clear and can complicate interpretation, but the features are not entirely redundant.
+*   **Fix:** Acknowledge the link during analysis. Test your model's performance and stability with and without both features to decide on the best approach.
+
+**bias_0040:**
+*   **Feature(s):** BMI ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.769**) between 'BMI' and 'lean_mass_kg'. In this dataset, individuals with a higher BMI also tend to have more lean body mass.
+*   **Harm:** This highlights a limitation of BMI—it doesn't distinguish between fat and muscle. The strong correlation creates multicollinearity, making it impossible for a model to separate the effects of high BMI from the effects of high lean mass.
+*   **Impact:** A model might interpret a high BMI as being purely negative, without accounting for the fact that it could be driven by high muscle mass in some individuals (e.g., athletes). This could lead to misclassifying healthy, muscular people as unhealthy.
+*   **Severity Explanation:** 'High' severity is warranted because the strong link between a crude measure (BMI) and a specific one (lean mass) can lead to significant misinterpretation.
+*   **Fix:** Do not use both features. 'lean_mass_kg' provides more specific and often more useful information about body composition than 'BMI'. Prefer 'lean_mass_kg' or other body composition metrics over BMI where possible.
+
+**bias_0041:**
+*   **Feature(s):** Physical exercise ↔ Carbs
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.644**) between 'Physical exercise' (likely minutes or intensity) and 'Carbs' (carbohydrate intake). People who exercise more tend to eat more carbohydrates.
+*   **Harm:** This behavioral link creates some multicollinearity. It makes it harder to separate the health benefits of exercise from the effects of the diet that supports that exercise (e.g., higher carb intake for fuel).
+*   **Impact:** A model predicting athletic performance might overstate the direct importance of carb intake because high-performing individuals in the data are also the ones exercising the most.
+*   **Severity Explanation:** 'Moderate' severity indicates a clear dietary pattern that should be considered, but the features are not fully redundant.
+*   **Fix:** This is a natural relationship to expect. Both features can likely be used, but be aware of the connection when interpreting results. Analyzing the effect of carbs at different exercise levels could provide deeper insights.
+
+**bias_0042:**
+*   **Feature(s):** Physical exercise ↔ Proteins
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.644**) exists between 'Physical exercise' and 'Proteins' intake. This suggests that individuals who engage in more physical exercise also consume more protein.
+*   **Harm:** This is another expected dietary pattern. It introduces some multicollinearity, making it difficult for a model to distinguish between the effects of exercise itself and the effects of a high-protein diet used for recovery and muscle building.
+*   **Impact:** When predicting muscle gain, a model might struggle to determine the separate contributions of the exercise stimulus and the protein intake, as they tend to increase together in this dataset.
+*   **Severity Explanation:** 'Moderate' severity reflects a significant but logical relationship that can complicate model interpretation.
+*   **Fix:** Acknowledge this relationship. If the goal is to understand the independent effect of protein, you would need to statistically control for the level of physical exercise.
+
+**bias_0043:**
+*   **Feature(s):** Physical exercise ↔ Fats
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.644**) is found between 'Physical exercise' and 'Fats' intake. People who exercise more also appear to consume more fats, which is consistent with an overall higher calorie intake.
+*   **Harm:** This creates some multicollinearity. It becomes harder for a model to isolate the specific impact of exercise when it's correlated with a higher intake of all macronutrients.
+*   **Impact:** A model might not be able to provide nuanced dietary advice. It could not easily determine the optimal fat intake for a given exercise level because, in the data, they rise together.
+*   **Severity Explanation:** 'Moderate' severity is assigned because the relationship is clear and reflects a general pattern of higher overall food consumption with higher activity levels.
+*   **Fix:** Be aware of the correlation. The fact that 'Carbs', 'Proteins', and 'Fats' all have the exact same correlation with 'Physical exercise' suggests they may be calculated as a fixed ratio of total calories. This should be investigated.
+
+**bias_0044:**
+*   **Feature(s):** Physical exercise ↔ cal_from_macros
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.644**) between 'Physical exercise' and 'cal_from_macros' (calories from macronutrients). This means more active individuals consume more calories from carbs, proteins, and fats.
+*   **Harm:** This is expected, as more exercise requires more energy. The correlation highlights the link between activity and total intake, but this can cause multicollinearity with other dietary features.
+*   **Impact:** This reinforces the difficulty in separating the effects of exercise from the effects of the diet that fuels it.
+*   **Severity Explanation:** 'Moderate' severity is appropriate. The identical correlation value (**0.644**) across all macros and total macro calories strongly suggests these nutritional features are perfectly co-dependent.
+*   **Fix:** Acknowledge the relationship. The bigger issue, hinted at here, is the perfect correlation among the nutritional features themselves, which is addressed next.
+
+**bias_0045:**
+*   **Feature(s):** Carbs ↔ Proteins
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'Carbs' and 'Proteins'. For every single record, the value for carbohydrate intake is identical to the value for protein intake.
+*   **Harm:** This is not a natural phenomenon; it indicates a major issue in data generation or recording. It's likely that these values were calculated or imputed using a flawed method (e.g., setting them equal to each other or to a third variable). This creates perfect multicollinearity.
+*   **Impact:** It is impossible for a model to learn anything about the distinct roles of carbs versus proteins. Any conclusion about one would apply identically to the other, which is biologically incorrect and would lead to nonsensical nutritional advice.
+*   **Severity Explanation:** 'High' severity is assigned because a perfect correlation indicates the features are duplicates, which is a critical flaw.
+*   **Fix:** The source of this data needs to be investigated. Given the perfect correlation, one of these columns must be dropped. It is also crucial to understand *why* they are identical to assess the quality of other nutritional data.
+
+**bias_0046:**
+*   **Feature(s):** Carbs ↔ Fats
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'Carbs' and 'Fats'. This means the recorded intake of carbohydrates is identical to the intake of fats for every person in the dataset.
+*   **Harm:** This is another indicator of a serious data quality problem. These two macronutrients should not be perfectly correlated. This makes the features redundant and misleading.
+*   **Impact:** A model trained on this data might conclude that carbs and fats have the same effect on health outcomes, which is a dangerously flawed oversimplification. This invalidates any analysis of macronutrient effects.
+*   **Severity Explanation:** 'High' severity is critical due to the perfect redundancy, which points to a fundamental flaw in the data itself.
+*   **Fix:** Investigate the data source. One of these columns must be removed. Since 'Proteins' is also perfectly correlated, it seems all three macronutrient columns contain the same values. This suggests a systemic issue.
+
+**bias_0047:**
+*   **Feature(s):** Carbs ↔ cal_from_macros
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'Carbs' and 'cal_from_macros'. This indicates that the total calories from macros is identical to the grams of carbs (and proteins, and fats). This is dimensionally incorrect (grams vs. calories) and confirms the macronutrient data is flawed.
+*   **Harm:** The data is internally inconsistent and redundant. 'cal_from_macros' should be a weighted sum of the macros (Carbs\*4 + Proteins\*4 + Fats\*9), not identical to any one of them.
+*   **Impact:** Any analysis relying on these features will be fundamentally wrong. A model cannot learn the relationship between macronutrients and calories because the data presents them as being the same thing.
+*   **Severity Explanation:** 'High' severity is an understatement. This is a critical data integrity failure.
+*   **Fix:** The entire block of macronutrient features ('Carbs', 'Proteins', 'Fats', 'cal_from_macros') is unreliable and should likely be discarded unless the error can be identified and corrected. At a minimum, only one of these identical columns should be kept, and it should be renamed to reflect its ambiguous nature (e.g., 'macro_proxy_value').
+
+**bias_0048:**
+*   **Feature(s):** Carbs ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate positive correlation (**r=0.623**) between 'Carbs' and 'protein_per_kg'. Since we know 'Carbs' is identical to 'Proteins' and 'Fats', this correlation applies to all of them. It means individuals with higher macronutrient intake also have a higher protein-to-weight ratio.
+*   **Harm:** This correlation is a downstream effect of the flawed macronutrient data and the mathematical definition of 'protein_per_kg'. It introduces multicollinearity.
+*   **Impact:** This further confuses the relationships in the dataset, making it hard to trust any model output related to nutrition.
+*   **Severity Explanation:** 'Moderate' severity is assigned based on the correlation value, but the underlying cause is the 'High' severity data quality issue with the macro columns.
+*   **Fix:** The root cause (the identical macro columns) must be addressed first. Once that is fixed (or those columns are removed), this correlation may change or disappear.
+
+**bias_0049:**
+*   **Feature(s):** Proteins ↔ Fats
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'Proteins' and 'Fats'. The values in both columns are identical for every row.
+*   **Harm:** This is a data quality failure, not a natural pattern. It makes the features perfectly redundant and indicates the data is not a true representation of people's diets.
+*   **Impact:** A model would treat protein and fat as interchangeable, which is biologically false and would lead to completely invalid conclusions about diet and health.
+*   **Severity Explanation:** 'High' severity is critical due to the perfect data duplication.
+*   **Fix:** Remove one of the columns. The broader issue across all macronutrient columns needs to be investigated and addressed.
+
+**bias_0050:**
+*   **Feature(s):** Proteins ↔ cal_from_macros
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A perfect positive correlation (**r=1.000**) exists between 'Proteins' and 'cal_from_macros'. The values are identical.
+*   **Harm:** This confirms the systemic data error. The data suggests that grams of protein are equal to total calories from macronutrients, which is incorrect.
+*   **Impact:** This makes it impossible to perform any meaningful analysis of the relationship between protein intake and total calories.
+*   **Severity Explanation:** 'High' severity is appropriate for this critical data integrity issue.
+*   **Fix:** Remove the redundant columns. The entire set of macronutrient features is untrustworthy.
+
+**bias_0051:**
+*   **Feature(s):** Proteins ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.623**) exists between 'Proteins' and 'protein_per_kg'. This is expected, as 'protein_per_kg' is calculated by dividing total protein by weight. As total protein intake increases, the ratio will also tend to increase.
+*   **Harm:** This is a mathematical dependency that causes multicollinearity. The features provide overlapping information.
+*   **Impact:** A model might not be able to separate the effect of total protein intake from the effect of protein intake relative to body size.
+*   **Severity Explanation:** 'Moderate' severity reflects the expected but potentially problematic definitional link.
+*   **Fix:** It is usually better to use the base features ('Proteins', 'Weight') in a model rather than adding a derived ratio like 'protein_per_kg', which creates this correlation.
+
+**bias_0052:**
+*   **Feature(s):** Fats ↔ cal_from_macros
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a perfect positive correlation (**r=1.000**) between 'Fats' and 'cal_from_macros'. The values are identical.
+*   **Harm:** This is part of the same data quality issue seen with 'Carbs' and 'Proteins'. It represents a critical flaw and data redundancy.
+*   **Impact:** No valid scientific or analytical conclusion can be drawn from these features as they are presented.
+*   **Severity Explanation:** 'High' severity is critical due to the nonsensical and perfect duplication of data.
+*   **Fix:** Remove redundant columns and consider the entire macronutrient block of data as unreliable.
+
+**bias_0053:**
+*   **Feature(s):** Fats ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.623**) exists between 'Fats' and 'protein_per_kg'. Since 'Fats' is identical to 'Proteins', this is the exact same correlation as seen between 'Proteins' and 'protein_per_kg'.
+*   **Harm:** This is a symptom of the upstream data quality failure. It creates multicollinearity based on flawed data.
+*   **Impact:** The correlation is misleading. There is no real-world reason for fat intake to be correlated with the protein-to-weight ratio in this specific way; it's an artifact of the data error.
+*   **Severity Explanation:** 'Moderate' severity, but driven by a 'High' severity root cause.
+*   **Fix:** Address the root cause of the identical macronutrient columns.
+
+**bias_0054:**
+*   **Feature(s):** Calories ↔ BMI_calc
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A very strong positive correlation (**r=0.838**) exists between 'Calories' and 'BMI_calc'. This is identical to the correlation between 'Calories' and 'BMI', as 'BMI_calc' is a duplicate column.
+*   **Harm:** This introduces redundancy and multicollinearity.
+*   **Impact:** Any model using 'Calories', 'BMI', and 'BMI_calc' would be unstable and its results unreliable due to the duplicated and highly correlated information.
+*   **Severity Explanation:** 'High' severity due to the strong relationship and data redundancy.
+*   **Fix:** Remove the duplicate column 'BMI_calc'. Then address the multicollinearity between 'Calories' and the remaining 'BMI' column as needed.
+
+**bias_0055:**
+*   **Feature(s):** Calories ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong negative correlation (**r=-0.701**) between 'Calories' and 'protein_per_kg'. Individuals with higher calorie intake tend to have a lower protein-per-kilogram ratio.
+*   **Harm:** This may be a mathematical artifact. 'Calories' is highly correlated with 'Weight' (r=0.978), and 'Weight' is the denominator in 'protein_per_kg'. This strong, indirect mathematical link creates significant multicollinearity.
+*   **Impact:** A model could draw the spurious conclusion that high-calorie diets are associated with lower relative protein needs, which could lead to flawed nutritional guidance.
+*   **Severity Explanation:** 'High' severity is assigned because the correlation is strong and likely driven by mathematical dependencies between features rather than a purely biological relationship.
+*   **Fix:** Avoid using all three of 'Calories', 'Weight', and 'protein_per_kg' in the same model. It's better to use the fundamental measures (e.g., 'Calories', 'Total Protein', 'Weight') and let the model learn the complex interactions.
+
+**bias_0056:**
+*   **Feature(s):** Calories ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong positive correlation (**r=0.718**) exists between total 'Calories' consumed and the final 'cal_balance'. This is expected, as 'Calories' is the primary input to the 'calories in' part of the calorie balance equation.
+*   **Harm:** This is a definitional relationship that causes multicollinearity. The features are not independent.
+*   **Impact:** A model cannot separate the effect of total calorie intake from the effect of the net energy balance, as one directly and strongly influences the other. This limits the model's explanatory power.
+*   **Severity Explanation:** 'High' severity is appropriate for a strong correlation that stems from a direct calculation.
+*   **Fix:** Do not use both features to predict an external outcome. If 'cal_balance' is your target variable, 'Calories' is a valid predictor. Otherwise, 'cal_balance' is a more comprehensive feature than 'Calories' alone.
+
+**bias_0057:**
+*   **Feature(s):** Calories ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** An extremely strong positive correlation (**r=0.963**) exists between 'Calories' and 'lean_mass_kg'. In this dataset, individuals with more lean mass consume a proportionally higher number of calories.
+*   **Harm:** This could be because calorie targets were calculated based on lean mass, or it's a very strong natural pattern. Either way, it results in severe multicollinearity, making the features almost interchangeable.
+*   **Impact:** It is nearly impossible for a model to determine if a health outcome is driven by a person's body composition (lean mass) or their diet (calories), as the two are almost perfectly aligned in this dataset.
+*   **Severity Explanation:** 'High' severity is warranted for this near-perfect correlation, which is a critical issue for modeling.
+*   **Fix:** Do not use both features in the same model. Choose the one that is more fundamental to the question you are asking. For instance, to understand metabolic processes, 'lean_mass_kg' may be more primary.
+
+**bias_0058:**
+*   **Feature(s):** Sets ↔ Burns Calories (per 30 min)
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.465**) is found between the number of 'Sets' performed in a workout and the rate of calorie burn ('Burns Calories (per 30 min)'). This suggests that workouts with more sets tend to be more intense.
+*   **Harm:** This introduces some multicollinearity. It can be slightly difficult to separate the effect of workout volume (sets) from workout intensity (calorie burn rate).
+*   **Impact:** A model recommending workout plans might not be able to distinguish whether to advise "do more sets" or "increase your intensity," as they are correlated behaviors in this dataset.
+*   **Severity Explanation:** 'Moderate' severity indicates a noticeable but not critical relationship.
+*   **Fix:** Both features can likely be used together. The relationship is logical and not strong enough to cause major issues in most models.
+
+**bias_0059:**
+*   **Feature(s):** Burns Calories (per 30 min) ↔ Burns Calories (per 30 min)_bc
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.815**) between 'Burns Calories (per 30 min)' and a feature named 'Burns Calories (per 30 min)_bc'. The '_bc' suffix often stands for Box-Cox transformation, a statistical method used to normalize data.
+*   **Harm:** The second feature is a direct mathematical transformation of the first. They contain the exact same information, just on a different scale. Using both creates perfect multicollinearity.
+*   **Impact:** A model will be unstable and its feature importances will be meaningless, as it will be unable to distinguish between the original feature and its own transformation.
+*   **Severity Explanation:** 'High' severity is appropriate because the features are informationally redundant.
+*   **Fix:** Remove one of these columns. Keep the original feature ('Burns Calories (per 30 min)') unless the transformed version is specifically needed for an algorithm that requires normally distributed data. Do not use both.
+
+**bias_0060:**
+*   **Feature(s):** BMI_calc ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate negative correlation (**r=-0.635**) exists between 'BMI_calc' and 'protein_per_kg'. As 'BMI_calc' is a duplicate of 'BMI', this is the same relationship identified in bias_0038.
+*   **Harm:** This is a redundant finding that reinforces the multicollinearity issue between BMI and ratio-based nutritional metrics.
+*   **Impact:** Using 'BMI_calc' would lead to the same flawed model interpretations as using 'BMI' alongside 'protein_per_kg'.
+*   **Severity Explanation:** 'Moderate' severity, but it's a symptom of larger data redundancy issues.
+*   **Fix:** Remove the duplicate 'BMI_calc' column first. Then, address the underlying correlation between 'BMI' and 'protein_per_kg' as previously described.
+
+**bias_0061:**
+*   **Feature(s):** BMI_calc ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.633**) is observed between 'BMI_calc' and 'cal_balance'. This is identical to the finding for 'BMI' in bias_0039, because the columns are duplicates.
+*   **Harm:** This finding is redundant due to the duplicated 'BMI_calc' column.
+*   **Impact:** No new information is provided here; it only confirms the data duplication issue.
+*   **Severity Explanation:** 'Moderate' severity, but the primary issue is the data duplication.
+*   **Fix:** Remove the 'BMI_calc' column.
+
+**bias_0062:**
+*   **Feature(s):** BMI_calc ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong positive correlation (**r=0.769**) between 'BMI_calc' and 'lean_mass_kg'. This is a redundant finding, identical to the correlation with 'BMI' in bias_0040.
+*   **Harm:** Using the duplicate 'BMI_calc' along with 'BMI' and 'lean_mass_kg' would compound the severe multicollinearity issues.
+*   **Impact:** The model would be highly unstable and its interpretation nonsensical.
+*   **Severity Explanation:** 'High' severity, highlighting both strong correlation and data duplication.
+*   **Fix:** Remove the 'BMI_calc' column.
+
+**bias_0063:**
+*   **Feature(s):** cal_from_macros ↔ protein_per_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** A moderate positive correlation (**r=0.623**) exists between 'cal_from_macros' and 'protein_per_kg'. Since 'cal_from_macros' is identical to 'Proteins', this is the same finding as bias_0051.
+*   **Harm:** This is a redundant correlation, stemming from the critical data quality failure in the macronutrient columns.
+*   **Impact:** It further demonstrates the unreliability of the nutritional data in the dataset.
+*   **Severity Explanation:** 'Moderate' severity for the correlation value, but it's caused by a 'High' severity data flaw.
+*   **Fix:** Address the root issue: the identical and flawed macronutrient columns. This specific correlation is just a symptom.
+
+**bias_0064:**
+*   **Feature(s):** protein_per_kg ↔ cal_balance
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate negative correlation (**r=-0.502**) between 'protein_per_kg' and 'cal_balance'. This suggests that individuals with a higher protein-to-weight ratio tend to have a lower calorie balance (are in more of a deficit).
+*   **Harm:** This correlation could be due to a combination of factors (e.g., people on weight loss diets often increase their protein ratio while decreasing overall calories). It introduces some multicollinearity.
+*   **Impact:** A model might find it difficult to separate the effects of a high-protein diet from the effects of a calorie deficit, as they are linked in this dataset.
+*   **Severity Explanation:** 'Moderate' severity indicates a significant relationship that should be considered during analysis.
+*   **Fix:** Be mindful of this relationship when interpreting the model. For a deeper analysis, one could study the effect of calorie balance at different levels of protein intake.
+
+**bias_0065:**
+*   **Feature(s):** protein_per_kg ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** There is a strong negative correlation (**r=-0.722**) between 'protein_per_kg' and 'lean_mass_kg'. This is counter-intuitive; one might expect more lean mass to be associated with higher relative protein intake.
+*   **Harm:** This surprising relationship is likely a mathematical artifact. Both 'lean_mass_kg' and the denominator of 'protein_per_kg' ('Weight') are very strongly correlated (r=0.982). This creates a complex mathematical dependency that results in a strong negative correlation, which causes severe multicollinearity.
+*   **Impact:** A model could produce the absurd conclusion that having more lean mass is linked to needing less protein per kilogram. This would lead to dangerously incorrect fitness and nutrition advice.
+*   **Severity Explanation:** 'High' severity is assigned because the strong correlation is likely an artifact that could lead to fundamentally wrong interpretations.
+*   **Fix:** Avoid using both features together. The relationship is not a simple, direct one and is confounded by weight. It is better to use the base features ('Total Protein', 'lean_mass_kg', 'Weight') and allow the model to learn the complex interactions.
+
+**bias_0066:**
+*   **Feature(s):** pct_HRR ↔ pct_maxHR
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** An extremely strong positive correlation (**r=0.988**) exists between 'pct_HRR' (percent of Heart Rate Reserve) and 'pct_maxHR' (percent of Max Heart Rate).
+*   **Harm:** Both are normalized measures of workout intensity derived from 'Avg_BPM'. They are calculated slightly differently but convey almost the exact same information. Using both creates severe multicollinearity.
+*   **Impact:** A model's interpretation would be nonsensical, as it would be trying to weigh the importance of two nearly identical features.
+*   **Severity Explanation:** 'High' severity is warranted due to the near-perfect correlation, indicating extreme redundancy.
+*   **Fix:** Choose only one. 'pct_HRR' is often considered a slightly better measure of personalized effort as it accounts for resting heart rate, but either one would work. Do not use both.
+
+**bias_0067:**
+*   **Feature(s):** cal_balance ↔ lean_mass_kg
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** High
+
+*   **Meaning:** A strong positive correlation (**r=0.708**) is found between 'cal_balance' and 'lean_mass_kg'. This suggests that individuals with more lean mass tend to be in a greater calorie surplus.
+*   **Harm:** This relationship introduces significant multicollinearity. It makes it hard to separate the effects of body composition (lean mass) from the effects of energy balance.
+*   **Impact:** A model predicting weight change might not be able to distinguish if the change is driven by a high starting lean mass (which influences metabolic rate) or by the calorie balance itself.
+*   **Severity Explanation:** 'High' severity is assigned because the strong correlation can make model coefficients unstable and hard to interpret.
+*   **Fix:** Be cautious when using both features. Depending on the goal, one might be more relevant than the other. If multicollinearity is an issue, feature selection would be required.
+
+**bias_0068:**
+*   **Feature(s):** cal_balance ↔ expected_burn
+*   **Bias Type:** Numeric Correlation Bias
+*   **Severity:** Moderate
+
+*   **Meaning:** There is a moderate negative correlation (**r=-0.482**) between 'cal_balance' and 'expected_burn'. This indicates that workouts with a higher expected calorie burn are associated with a lower overall calorie balance for the individual.
+*   **Harm:** This is a logical link, as higher energy expenditure contributes to a lower net calorie balance. This dependency creates some multicollinearity.
+*   **Impact:** A model might have difficulty separating the impact of a high-intensity workout (high expected burn) from the impact of the resulting calorie deficit.
+*   **Severity Explanation:** 'Moderate' severity indicates a clear but not overwhelming relationship.
+*   **Fix:** Acknowledge the relationship during analysis. If 'cal_balance' is calculated using an energy expenditure term, this link is partly definitional.
+
+**bias_0069:**
+*   **Feature(s):** Physical exercise
+*   **Bias Type:** Outlier Bias
+*   **Severity:** High
+
+*   **Meaning:** The 'Physical exercise' feature is right-skewed, and a very large portion of its values—**23.5%**—are identified as outliers. This means nearly a quarter of the data points for this feature are unusually high compared to the rest of the distribution.
+*   **Harm:** Outliers can disproportionately influence a model, pulling its estimates away from the true pattern of the majority of the data. This is especially problematic for models sensitive to scale, like linear regression or SVMs. It can lead to poor generalization.
+*   **Impact:** A model predicting calorie burn might be heavily skewed by a few "super-athlete" records with extremely long exercise durations. The model might then consistently overestimate calorie burn for the average person, leading to inaccurate advice.
+*   **Severity Explanation:** 'High' severity is assigned because 23.5% is an extremely high percentage of outliers. This is not just a few stray points; it suggests a fundamentally skewed or perhaps bimodal distribution that needs careful handling.
+*   **Fix:**
+    1.  **Investigate:** Determine if these are data entry errors or represent a legitimate (but extreme) subgroup of users.
+    2.  **Transform:** Apply a logarithmic or other transformation to reduce the skew and pull the outliers closer to the main distribution.
+    3.  **Cap/Winsorize:** Cap the values at a certain percentile (e.g., the 99th) to reduce the influence of the most extreme values.
+    4.  **Robust Models:** Use models that are inherently less sensitive to outliers, such as tree-based models (Random Forest, Gradient Boosting).
+
+---
+
+### Overall Reliability Assessment
+
+The dataset's reliability for "out-of-the-box" machine learning is **very low**. While it appears to have a good gender balance, it suffers from critical and systemic issues:
+
+1.  **Severe Multicollinearity:** The dataset is saturated with redundant features. Many columns are either direct duplicates (`BMI` vs. `BMI_calc`), mathematical transformations (`pct_HRR` vs. `pct_maxHR`), or so highly correlated (r > 0.9) that they are effectively interchangeable (`Weight` vs. `lean_mass_kg`, `Calories` vs. `lean_mass_kg`).
+2.  **Data Integrity Failures:** The macronutrient data (`Carbs`, `Proteins`, `Fats`) is fundamentally flawed, with all columns containing identical values. This makes any nutritional analysis based on them invalid.
+3.  **Useless Features:** At least one column (`meal_name`) contains a single constant value, providing zero information.
+4.  **Significant Outlier Presence:** The 'Physical exercise' feature has an extremely high percentage of outliers (23.5%), which will skew the results of many analytical models if not handled properly.
+
+This dataset appears to be either synthetically generated with flawed logic or compiled from a source where many fields were calculated from a few base inputs without proper documentation or cleaning. It requires extensive and careful preprocessing before it can be used for any reliable predictive modeling.
+
+### Fairness & Ethical Implications
+
+*   **Misleading Health Advice:** The primary ethical risk comes from building a model on this data and deploying it. The strong, often artificial correlations could lead a model to produce nonsensical or harmful recommendations. For example, the flawed link between `lean_mass_kg` and `protein_per_kg` could lead to advising individuals with more muscle to consume relatively less protein, which is counterproductive and potentially unhealthy.
+*   **Misclassification of Health Status:** The strong correlation between BMI and lean mass could lead a model to misclassify muscular individuals as unhealthy, which is a known ethical issue with over-reliance on BMI.
+*   **No Obvious Demographic Bias (beyond Gender):** The dataset shows good gender balance. However, without other demographic features (like age, ethnicity, or socioeconomic status), it's impossible to assess fairness across other important axes. The patterns observed might only apply to a very specific, unstated population.
+
+### Concluding Summary
+
+The dataset's "fairness health score" is **Poor**. While not imbalanced on gender, its internal validity is compromised by severe data quality issues, redundancy, and artificial correlations. Using this data without aggressive cleaning and feature selection would likely lead to an unreliable, uninterpretable, and potentially harmful model. The dataset is more of a feature engineering challenge than a clean source of truth.
+
+### Actionable Recommendations
+
+1.  **Data Cleaning and Deduplication:**
+    *   **Remove Useless Columns:** Drop `meal_name`.
+    *   **Remove Duplicate Columns:** Drop `BMI_calc`, `Burns Calories (per 30 min)_bc`, and one of `pct_HRR` or `pct_maxHR`.
+    *   **Address Flawed Macronutrient Data:** Investigate the source of the `Carbs`, `Proteins`, `Fats`, and `cal_from_macros` columns. Given the perfect correlations, it is safest to **remove all of them**. If one value is deemed reliable, keep it and rename it appropriately.
+
+2.  **Feature Selection to Manage Multicollinearity:**
+    *   For each pair of highly correlated features (e.g., `r > 0.8`), select only one to keep. The choice should be based on domain knowledge.
+    *   **Example Selections:**
+        *   Between `Weight`, `BMI`, `Fat_Percentage`, and `lean_mass_kg`, choose the one most relevant to your prediction target (e.g., `Fat_Percentage` for health risk, `lean_mass_kg` for athletic performance).
+        *   Between `Session_Duration` and `Calories_Burned`, choose one or engineer an intensity feature (`Calories_Burned / Session_Duration`).
+        *   Remove features that are direct calculations from others, like `expected_burn` (keep `Session_Duration`) and `protein_per_kg` (keep `Total Protein` and `Weight`).
+
+3.  **Outlier Handling:**
+    *   For the `Physical exercise` feature, apply a logarithmic transformation to reduce its skew.
+    *   Investigate the top 5% of values to confirm they are plausible before deciding whether to cap them.
+
+4.  **Re-Evaluation:**
+    *   After performing these cleaning and feature engineering steps, run the bias detection analysis again. The goal is to create a final dataset of largely independent, meaningful, and clean features before proceeding to model development.

@@ -170,13 +170,6 @@ class MLBiasOptimizer:
 
 
 # ==========================================
-# 1️⃣ Gemini Connector (kept small here if needed)
-# ==========================================
-# Note: For separation of concerns we kept Gemini connector in gemini_connector.py.
-# If you want it copied here remove the separate module and re-add.
-
-
-# ==========================================
 # 2️⃣ BiasDetector (core)
 # ==========================================
 class BiasDetector:
@@ -429,10 +422,6 @@ class BiasReporter:
         self.df = df
         self.bias_report = bias_report
     def fairness_score(self) -> int:
-        """Return a deterministic integer fairness score (0-100).
-
-        High severity issues subtract 10, moderate subtract 5. If no issues, return 95 by default.
-        """
         # Start from a perfect score and subtract penalties from issues and dataset quality
         base = 100
         penalties = 0
