@@ -160,6 +160,75 @@ export type UploadInfo = {
   preprocessing_warnings?: unknown;
 };
 
+// Simple profile helpers with network-first, localStorage fallback so the UI works
+export type Profile = {
+  id?: string;
+  name?: string;
+  email?: string;
+  password?: string;
+};
+
+// Create or update profile via backend; if backend is unavailable, persist to localStorage
+export async function createProfile(p: Profile): Promise<Profile> {
+  try {
+    const res = await fetchWithRetry(`${BACKEND_URL}/api/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }, 1, 30000, false);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    try { localStorage.setItem('d-bias-profile', JSON.stringify(data)); } catch {}
+    return data;
+  } catch (e) {
+    // fallback to local storage
+    const stored = { id: 'local', ...p } as Profile;
+    try { localStorage.setItem('d-bias-profile', JSON.stringify(stored)); } catch {}
+    return stored;
+  }
+}
+
+export async function getProfile(): Promise<Profile | null> {
+  try {
+    const res = await fetchWithRetry(`${BACKEND_URL}/api/profile`, { method: 'GET' }, 1, 15000, false);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data as Profile;
+  } catch (e) {
+    try {
+      const raw = localStorage.getItem('d-bias-profile');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+export async function updateProfile(id: string | undefined, p: Profile): Promise<Profile> {
+  try {
+    const path = id ? `${BACKEND_URL}/api/profile/${encodeURIComponent(id)}` : `${BACKEND_URL}/api/profile`;
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetchWithRetry(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }, 1, 30000, false);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    try { localStorage.setItem('d-bias-profile', JSON.stringify(data)); } catch {}
+    return data;
+  } catch (e) {
+    const stored = { id: id ?? 'local', ...p } as Profile;
+    try { localStorage.setItem('d-bias-profile', JSON.stringify(stored)); } catch {}
+    return stored;
+  }
+}
+
+export async function deleteProfile(id: string | undefined): Promise<void> {
+  try {
+    if (id) {
+      await fetchWithRetry(`${BACKEND_URL}/api/profile/${encodeURIComponent(id)}`, { method: 'DELETE' }, 1, 15000, false);
+    } else {
+      await fetchWithRetry(`${BACKEND_URL}/api/profile`, { method: 'DELETE' }, 1, 15000, false);
+    }
+  } catch (e) {
+    // ignore network errors for delete and clear local storage
+  }
+  try { localStorage.removeItem('d-bias-profile'); } catch {}
+}
+
 // Upload a dataset for quick validation/metadata without full analysis
 export async function uploadDataset(file: File): Promise<UploadInfo> {
   const form = new FormData();

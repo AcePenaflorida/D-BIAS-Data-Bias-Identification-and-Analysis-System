@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { UploadPage } from './components/UploadPage';
 import { Dashboard } from './components/Dashboard';
+import ToggleMenu from './components/ToggleMenu';
+import { Toaster } from './components/ui/sonner';
 
 export interface AnalysisResult {
   id: string;
@@ -81,29 +83,44 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {currentView === 'upload' ? (
-        <UploadPage
-          onAnalysisComplete={handleAnalysisComplete}
-          isAuthenticated={isAuthenticated}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          userHistory={userHistory}
-          onViewHistory={handleViewHistory}
-        />
-      ) : (
-        analysisResult && (
-          <Dashboard
-            result={analysisResult}
-            onBackToUpload={handleBackToUpload}
-            isAuthenticated={isAuthenticated}
-            onLogin={handleLogin}
-            onLogout={handleLogout}
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
+        {isAuthenticated && (
+          <ToggleMenu
             userHistory={userHistory}
             onViewHistory={handleViewHistory}
+            onLogout={handleLogout}
+            onLogin={handleLogin}
+            isAuthenticated={isAuthenticated}
           />
-        )
-      )}
-    </div>
+        )}
+
+        <div className="flex-1">
+          {currentView === 'upload' ? (
+            <UploadPage
+              onAnalysisComplete={handleAnalysisComplete}
+              isAuthenticated={isAuthenticated}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
+              userHistory={userHistory}
+              onViewHistory={handleViewHistory}
+            />
+          ) : (
+            analysisResult && (
+              <Dashboard
+                result={analysisResult}
+                onBackToUpload={handleBackToUpload}
+                isAuthenticated={isAuthenticated}
+                onLogin={handleLogin}
+                onLogout={handleLogout}
+                userHistory={userHistory}
+                onViewHistory={handleViewHistory}
+              />
+            )
+          )}
+        </div>
+      </div>
+      <Toaster />
+    </>
   );
 }

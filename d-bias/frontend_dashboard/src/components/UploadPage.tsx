@@ -5,7 +5,6 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Header } from './Header';
-import { HomeHistory } from './HomeHistory';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
@@ -225,6 +224,8 @@ export function UploadPage({
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Header removed for user page as requested */}
+
       <Header
         isAuthenticated={isAuthenticated}
         onLogin={onLogin}
@@ -233,24 +234,10 @@ export function UploadPage({
         onViewHistory={onViewHistory}
       />
 
-      <main className="flex-1 container mx-auto px-4 py-12">
+      {/* Sidebar is rendered by App (layout flow) */}
+
+  <main className="flex-1 container mx-auto px-4 py-12">
         <div className="flex gap-8">
-          {/* Left: Recent history sidebar (visible on large screens) */}
-          {isAuthenticated && (
-            <aside className="w-72 hidden lg:block">
-              {/* Constrain the sticky history column to the viewport so its internal list can scroll */}
-              <div className="sticky top-24 max-h-[calc(100vh-6rem)] overflow-y-auto">
-                <HomeHistory
-                  history={userHistory}
-                  onPreview={(r) => {
-                    setSelectedHistory(r);
-                    setShowHistoryPreview(true);
-                  }}
-                  onOpen={(r) => onViewHistory(r)}
-                />
-              </div>
-            </aside>
-          )}
 
           {/* Main content (uploader + preview) centered */}
           <div className="flex-1 max-w-4xl mx-auto">

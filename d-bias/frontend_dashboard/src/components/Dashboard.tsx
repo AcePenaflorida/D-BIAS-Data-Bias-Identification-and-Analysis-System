@@ -88,7 +88,7 @@ export function Dashboard({
         </div>
       </div>
 
-      <main className="flex-1 container mx-auto px-4 py-8">
+  <main className="flex-1 container mx-auto px-4 py-8">
         <div className="flex gap-6">
           {/* Main Content */}
           <div className="flex-1 min-w-0">

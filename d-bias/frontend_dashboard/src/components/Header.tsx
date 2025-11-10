@@ -36,6 +36,8 @@ export function Header({
   onViewHistory,
   showHistory = true,
 }: HeaderProps) {
+  // If the user is authenticated, hide the global header per request.
+  if (isAuthenticated) return null;
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
 
