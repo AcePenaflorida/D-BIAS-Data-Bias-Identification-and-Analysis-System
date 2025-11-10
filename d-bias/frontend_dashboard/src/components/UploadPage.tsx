@@ -20,7 +20,7 @@ interface UploadPageProps {
   onViewHistory: (result: AnalysisResult) => void;
 }
 
-import { analyzeDataset, uploadDataset, type UploadInfo } from '../services/api';
+import { analyzeDataset, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo } from '../services/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 
 export function UploadPage({
@@ -42,6 +42,17 @@ export function UploadPage({
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [analysisController, setAnalysisController] = useState<AbortController | null>(null);
+  const [isLoadingCached, setIsLoadingCached] = useState(false);
+  const [hasCached, setHasCached] = useState<boolean | null>(null);
+
+  // Probe cached availability once on mount
+  useEffect(() => {
+    let mounted = true;
+    fetchLatestCachedAnalysis()
+      .then((r) => { if (mounted) setHasCached(!!r); })
+      .catch(() => { if (mounted) setHasCached(false); });
+    return () => { mounted = false; };
+  }, []);
 
   // Reset all dataset-related state (used when closing the preview dialog)
   const resetDatasetSelection = useCallback(() => {
@@ -218,6 +229,23 @@ export function UploadPage({
     }
   };
 
+  // Load the latest cached analysis from backend and open dashboard (if exists)
+  const handleLoadCached = async () => {
+    setError('');
+    setIsLoadingCached(true);
+    try {
+      const result = await fetchLatestCachedAnalysis();
+      if (!result) {
+        setError('No cached analysis available yet. Upload and analyze a dataset first.');
+        setHasCached(false);
+      } else {
+        onAnalysisComplete(result);
+      }
+    } finally {
+      setIsLoadingCached(false);
+    }
+  };
+
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null);
 
@@ -295,7 +323,20 @@ export function UploadPage({
                     )}
                   </>
                 ) : (
-                  <p className="text-slate-500 text-sm">No file selected.</p>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-slate-500 text-sm">No file selected.</p>
+                    <Button
+                      onClick={handleLoadCached}
+                      disabled={isLoadingCached || hasCached === false}
+                      variant="secondary"
+                    >
+                      {isLoadingCached
+                        ? 'Loading cached…'
+                        : hasCached === false
+                          ? 'No Cache Yet'
+                          : 'Load Cached Analysis'}
+                    </Button>
+                  </div>
                 )}
               </div>
             </Card>

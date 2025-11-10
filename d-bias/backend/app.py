@@ -4,6 +4,10 @@ import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
 import os
+import time
+import traceback
+import uuid as _uuid
+import json
 from datetime import timedelta
 
 # CORS support
@@ -15,7 +19,7 @@ except ImportError:
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
 from gemini_connector import GeminiConnector
-from bias_mapper import map_biases
+from bias_mapper import map_biases, generate_bias_mapping
 from visualization import visualize_fairness_dashboard
 from preprocessing import load_and_preprocess, validate_dataset
 
@@ -95,9 +99,59 @@ def make_json_serializable(obj):
     except Exception:
         return str(obj)
 
+
+# ------------------------
+# Cached analysis helpers
+# ------------------------
+def get_cache_dir() -> str:
+    """Return the directory where cached analysis JSON lives.
+
+    By default, resolves to `<repo>/d-bias/_data/program_generated_files` to
+    match tests/test_backend.py. Can be overridden with ANALYSIS_CACHE_DIR or
+    ANALYSIS_CACHE_PATH for a specific file.
+    """
+    # Allow explicit override of a single file
+    cache_path = os.getenv("ANALYSIS_CACHE_PATH")
+    if cache_path:
+        return os.path.dirname(os.path.abspath(cache_path))
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    dbias_dir = os.path.abspath(os.path.join(here, ".."))
+    return os.path.join(dbias_dir, "_data", "program_generated_files")
+
+
+def get_cache_file() -> str:
+    """Return the default cache JSON file path (analysis_response.json)."""
+    # Allow explicit override of full path
+    cache_path = os.getenv("ANALYSIS_CACHE_PATH")
+    if cache_path:
+        return os.path.abspath(cache_path)
+    return os.path.join(get_cache_dir(), "analysis_response.json")
+
 @app.route("/")
 def index():
     return jsonify({"message": "D-BIAS backend running"}), 200
+
+
+@app.route("/api/analysis/latest", methods=["GET"])
+def latest_analysis():
+    """Serve the most recently generated analysis JSON from disk.
+
+    Looks for analysis_response.json in the cache directory. If not found,
+    returns 404. The content is returned as JSON after ensuring it is
+    JSON-serializable for frontend consumption.
+    """
+    path = get_cache_file()
+    if not os.path.exists(path):
+        return jsonify({"error": f"cached analysis not found at {path}"}), 404
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return jsonify({"error": f"failed to read cached analysis: {e}"}), 500
+
+    return jsonify(make_json_serializable(data)), 200
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
@@ -145,151 +199,146 @@ def upload():
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
+    """Robust analysis endpoint with diagnostic logging & failure shielding.
+
+    Form-data:
+      file: CSV file (required)
+      excluded: optional comma list
+      run_gemini: 'true' to enable Gemini summary (requires GEMINI_API_KEY)
+      return_plots: 'json' | 'png' | 'both' | 'none'
     """
-    Accepts multipart/form-data with key 'file' (CSV).
-    Optional form data:
-      - excluded: comma-separated columns to exclude
-      - run_gemini: 'true' to request AI summary (if GEMINI_API_KEY present)
-    """
+    req_id = str(_uuid.uuid4())[:8]
+    t0 = time.time()
+    def log(msg: str):
+        print(f"[analyze {req_id}] {msg}")
+
+    # Quick availability guard
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
-
     f = request.files["file"]
     if f.filename == "":
         return jsonify({"error": "no selected file"}), 400
 
     excluded = request.form.get("excluded", os.getenv("EXCLUDED_COLUMNS", "id,timestamp"))
     excluded_cols = [c.strip() for c in excluded.split(",") if c.strip()]
-
-    try:
-        df, prep_warnings = load_and_preprocess(f)
-    except Exception as e:
-        return jsonify({"error": f"could not read/convert uploaded file: {e}"}), 400
-
-    # Build optimizer and detector
-    try:
-        optimizer = MLBiasOptimizer(df.drop(columns=[c for c in excluded_cols if c in df.columns], errors="ignore"))
-    except Exception:
-        optimizer = MLBiasOptimizer(df)  # fallback
-
-    detector = BiasDetector(df, exclude_columns=excluded_cols, optimizer=optimizer)
-    bias_report = detector.generate_bias_report()
-
-    reporter = BiasReporter(df, bias_report)
-    fairness_score = reporter.fairness_score()
-
-    summary_text = None
-    run_gemini = request.form.get("run_gemini", "false").lower() == "true"
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    if run_gemini and gemini_key:
-        try:
-            gemini = GeminiConnector(gemini_key)
-            summary_text = gemini.summarize_biases(bias_report, dataset_name=f.filename, shape=df.shape, excluded_columns=excluded_cols)
-        except Exception as e:
-            summary_text = f"Gemini summary failed: {e}"
-
-    # Optional: generate visualizations and return them when requested.
-    # Accepted values for return_plots: 'json' (plotly dict), 'png' (base64 PNG), 'both'
     return_plots = request.form.get("return_plots", request.args.get("return_plots", "none")).lower()
-    plots_payload = None
-    if return_plots in ("json", "png", "both"):
+    run_gemini_flag = request.form.get("run_gemini", "false").lower() == "true"
+    enable_plots = return_plots in ("json", "png", "both")
+    log(f"start file={f.filename} excluded={excluded_cols} plots={return_plots} gemini={run_gemini_flag}")
+
+    try:
+        # Preprocess
+        df, prep_warnings = load_and_preprocess(f)
+        log(f"loaded dataframe shape={df.shape} warnings={len(prep_warnings) if prep_warnings else 0}")
+
+        # Optimizer & detector
         try:
-            figs = visualize_fairness_dashboard(bias_report, df)
-            plots_payload = {}
-            for i, fig in enumerate(figs, start=1):
-                key = f"fig{i}"
-                if fig is None:
-                    plots_payload[key] = None
-                    continue
-                # always include plotly dict/json
-                if return_plots in ("json", "both"):
-                    try:
-                        plots_payload[key] = {"plotly": fig.to_dict()}
-                    except Exception:
-                        plots_payload[key] = {"plotly": None}
+            optimizer = MLBiasOptimizer(df.drop(columns=[c for c in excluded_cols if c in df.columns], errors="ignore"))
+        except Exception:
+            optimizer = MLBiasOptimizer(df)
+        detector = BiasDetector(df, exclude_columns=excluded_cols, optimizer=optimizer)
+        bias_report = detector.generate_bias_report()
 
-                # include PNG if requested and kaleido available
-                if return_plots in ("png", "both"):
-                    try:
-                        import base64
-                        img_bytes = fig.to_image(format="png")
-                        plots_payload.setdefault(key, {})["png_base64"] = base64.b64encode(img_bytes).decode("utf-8")
-                    except Exception:
-                        # PNG export failed (kaleido maybe missing); record error
-                        plots_payload.setdefault(key, {})["png_base64"] = None
-        except Exception as e:
-            # If visualization generation fails, include an error note but continue returning other results
-            plots_payload = {"error": str(e)}
 
-    # also return visualizations as JSON-ready (not images) - we return nothing heavy here; frontends should call visualization module directly if needed
-    # Compute lightweight numeric summary for frontend display
-    try:
-        num_df = df.select_dtypes(include=[np.number])
-        rows, cols = df.shape
-        if num_df.shape[1] > 0:
-            means = num_df.mean(numeric_only=True)
-            medians = num_df.median(numeric_only=True)
-            variances = num_df.var(numeric_only=True)
-            stds = num_df.std(numeric_only=True)
-            # representative aggregation across numeric columns
-            numeric_summary = {
-                "rows": int(rows),
-                "columns": int(cols),
-                "mean": float(np.nanmean(means.values)) if len(means) else 0.0,
-                "median": float(np.nanmedian(medians.values)) if len(medians) else 0.0,
-                "mode": float(num_df.mode(dropna=True).iloc[0].mean()) if not num_df.mode(dropna=True).empty else 0.0,
-                "max": float(np.nanmax(num_df.max(numeric_only=True).values)) if len(num_df.columns) else 0.0,
-                "min": float(np.nanmin(num_df.min(numeric_only=True).values)) if len(num_df.columns) else 0.0,
-                "std_dev": float(np.nanmean(stds.values)) if len(stds) else 0.0,
-                "variance": float(np.nanmean(variances.values)) if len(variances) else 0.0,
-            }
-        else:
-            numeric_summary = {
-                "rows": int(rows),
-                "columns": int(cols),
-                "mean": 0.0,
-                "median": 0.0,
-                "mode": 0.0,
-                "max": 0.0,
-                "min": 0.0,
-                "std_dev": 0.0,
-                "variance": 0.0,
-            }
-    except Exception:
-        numeric_summary = {
-            "rows": int(df.shape[0]),
-            "columns": int(df.shape[1]),
-            "mean": 0.0,
-            "median": 0.0,
-            "mode": 0.0,
-            "max": 0.0,
-            "min": 0.0,
-            "std_dev": 0.0,
-            "variance": 0.0,
+        log(f"bias_report entries={len(bias_report) if isinstance(bias_report, list) else 'n/a'}")
+
+        reporter = BiasReporter(df, bias_report)
+        fairness_score = reporter.fairness_score()
+
+        ai_output = None
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        if run_gemini_flag and gemini_key:
+            try:
+                gemini = GeminiConnector(gemini_key)
+                ai_output = gemini.summarize_biases(bias_report, dataset_name=f.filename, shape=df.shape, excluded_columns=excluded_cols)
+            except Exception as eg:
+                ai_output = f"Gemini summary failed: {eg}"
+                log(f"gemini_error={eg}")
+
+        # Plots (optional & shielded)
+        plots_payload = None
+        if enable_plots:
+            try:
+                figs = visualize_fairness_dashboard(bias_report, df)
+                plots_payload = {}
+                for i, fig in enumerate(figs, start=1):
+                    key = f"fig{i}"
+                    if fig is None:
+                        plots_payload[key] = None
+                        continue
+                    if return_plots in ("json", "both"):
+                        try:
+                            plots_payload[key] = {"plotly": fig.to_dict()}
+                        except Exception:
+                            plots_payload[key] = {"plotly": None}
+                    if return_plots in ("png", "both"):
+                        try:
+                            import base64
+                            img_bytes = fig.to_image(format="png")
+                            plots_payload.setdefault(key, {})["png_base64"] = base64.b64encode(img_bytes).decode("utf-8")
+                        except Exception as ep:
+                            plots_payload.setdefault(key, {})["png_base64"] = None
+                            log(f"plot_png_error key={key} err={ep}")
+            except Exception as ev:
+                plots_payload = {"error": str(ev)}
+                log(f"visualization_block_error={ev}")
+
+        # Numeric summary
+        try:
+            num_df = df.select_dtypes(include=[np.number])
+            rows, cols = df.shape
+            if num_df.shape[1] > 0:
+                means = num_df.mean(numeric_only=True)
+                medians = num_df.median(numeric_only=True)
+                variances = num_df.var(numeric_only=True)
+                stds = num_df.std(numeric_only=True)
+                numeric_summary = {
+                    "rows": int(rows),
+                    "columns": int(cols),
+                    "mean": float(np.nanmean(means.values)) if len(means) else 0.0,
+                    "median": float(np.nanmedian(medians.values)) if len(medians) else 0.0,
+                    "mode": float(num_df.mode(dropna=True).iloc[0].mean()) if not num_df.mode(dropna=True).empty else 0.0,
+                    "max": float(np.nanmax(num_df.max(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                    "min": float(np.nanmin(num_df.min(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                    "std_dev": float(np.nanmean(stds.values)) if len(stds) else 0.0,
+                    "variance": float(np.nanmean(variances.values)) if len(variances) else 0.0,
+                }
+            else:
+                numeric_summary = {"rows": int(rows), "columns": int(cols), "mean": 0.0, "median": 0.0, "mode": 0.0, "max": 0.0, "min": 0.0, "std_dev": 0.0, "variance": 0.0}
+        except Exception:
+            numeric_summary = {"rows": int(df.shape[0]), "columns": int(df.shape[1]), "mean": 0.0, "median": 0.0, "mode": 0.0, "max": 0.0, "min": 0.0, "std_dev": 0.0, "variance": 0.0}
+
+        response = {
+            "bias_report": bias_report,
+            "fairness_score": fairness_score,
+            "summary": ai_output,
+            "dataset_summary": reporter.summary(),
+            "numeric_summary": numeric_summary,
+            "reliability": reporter.reliability(),
+            "preprocessing_warnings": prep_warnings,
         }
+        try:
+            ai_text_for_mapping = ai_output if ai_output else reporter.summary()
+            # mapped = map_biases(bias_report, ai_text_for_mapping)
+            mapped = generate_bias_mapping(bias_report, ai_text_for_mapping)
+            print(mapped)
+            response["mapped_biases"] = mapped
+        except Exception as em:
+            response["mapped_biases_error"] = str(em)
+            log(f"generate_bias_mapping_error={em}")
+        if plots_payload is not None:
+            response["plots"] = plots_payload
 
-    response = {
-        "bias_report": bias_report,
-        "fairness_score": fairness_score,
-        "summary": summary_text,
-        "dataset_summary": reporter.summary(),
-        "numeric_summary": numeric_summary,
-        "reliability": reporter.reliability()
-    }
-    # Map AI explanations to each bias entry (returns grouped structure). If no AI summary
-    # was generated, map_biases will still return a structure (ai_explanation may be None).
-    try:
-        # Use Gemini summary when available; otherwise fall back to reporter.summary()
-        ai_text_for_mapping = summary_text if summary_text else reporter.summary()
-        mapped = map_biases(bias_report, ai_text_for_mapping)
-        response["mapped_biases"] = mapped
+        log(f"success elapsed={round(time.time()-t0,2)}s")
+        return jsonify(make_json_serializable(response)), 200
     except Exception as e:
-        # don't fail the whole endpoint if mapping errors; include an error note
-        response["mapped_biases_error"] = str(e)
-    if plots_payload is not None:
-        response["plots"] = plots_payload
-
-    return jsonify(make_json_serializable(response)), 200
+        log(f"fatal_error={e}\n{traceback.format_exc()}")
+        return jsonify({
+            "error": "internal server error",
+            "detail": str(e),
+            "trace": traceback.format_exc(),
+            "request_id": req_id
+        }), 500
 
 
 @app.route("/api/plot/<fig_id>.png", methods=["POST"])
@@ -356,4 +405,6 @@ def plot_png(fig_id: str):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Disable the reloader & debug for stability during automated tests to avoid connection resets.
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host="0.0.0.0", port=port, debug=debug_mode, use_reloader=False)

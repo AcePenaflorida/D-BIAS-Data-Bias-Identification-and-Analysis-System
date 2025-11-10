@@ -32,7 +32,7 @@ def get_config():
         "OUT_DIR": OUT_DIR,
         "CACHE_PATH": os.path.join(OUT_DIR, "analysis_response.json"),
         "BACKEND_URL": "http://127.0.0.1:5000/api/analyze",
-        "DATASET_PATH": r"C:\Users\ACER\Documents\_Projects\D-BIAS\d-bias\_data\sample_datasets\heart_disease_cleaned.csv",
+        "DATASET_PATH": r"C:\Users\ACER\Documents\_Projects\D-BIAS\d-bias\_data\sample_datasets\heart.csv",
         "SUPABASE_URL": os.getenv("SUPABASE_URL"),
         "SUPABASE_SERVICE_KEY": os.getenv("SUPABASE_SERVICE_KEY"),
         "SUPABASE_BUCKET": os.getenv("SUPABASE_BUCKET", "pdf_bias_report"),
@@ -407,7 +407,7 @@ def generate_pdf_report(config, data, output_pdf_path=None):
 
 # ==================== MAIN WORKFLOW ====================
 
-def run_analysis_workflow(config, supabase, use_cache=True, run_gemini=True, upload_to_supabase=True):
+def run_analysis_workflow(config, supabase, use_cache=False, run_gemini=True, upload_to_supabase=True):
     """
     Run the complete bias analysis workflow.
     
@@ -428,8 +428,8 @@ def run_analysis_workflow(config, supabase, use_cache=True, run_gemini=True, upl
     }
     
     # Test Supabase connection if client is available
-    if supabase:
-        test_supabase_connection(supabase, config)
+    # if supabase:
+    #     test_supabase_connection(supabase, config)
     
     # Load or run analysis
     if use_cache and os.path.exists(config["CACHE_PATH"]):
@@ -505,10 +505,10 @@ def main():
     # Run the complete workflow
     results = run_analysis_workflow(
         config=config,
-        supabase=supabase,
-        use_cache=True,
+        supabase=None,
+        use_cache=False,
         run_gemini=True,
-        upload_to_supabase=True
+        upload_to_supabase=False
     )
     
     return results
