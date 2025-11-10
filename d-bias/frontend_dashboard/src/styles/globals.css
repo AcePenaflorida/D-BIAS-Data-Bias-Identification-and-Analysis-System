@@ -1,6 +1,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Default collapsed sidebar width to avoid initial overlay before sidebar mounts */
+  --sidebar-width: 4rem; /* 64px */
   --font-size: 16px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
@@ -121,11 +123,14 @@
 
 @layer base {
   * {
+    box-sizing: border-box;
     @apply border-border outline-ring/50;
   }
 
   body {
     @apply bg-background text-foreground;
+    /* Prevent unintended horizontal scroll when sidebar toggles */
+    overflow-x: hidden;
   }
 
     /* Fallback spin animation in case Tailwind's animate-spin utility isn't generated */

@@ -42,7 +42,7 @@ export function PDFPreviewDialog({ isOpen, onClose, result }: PDFPreviewDialogPr
           <div className="max-w-2xl mx-auto space-y-6">
             {/* Header */}
             <div className="text-center border-b border-slate-200 pb-6">
-              <h1 className="text-slate-900 mb-2">D-BIAS Analysis Report</h1>
+              <h1 className="text-slate-900 mb-2"><span className="font-semibold">D-BIAS</span> Analysis Report</h1>
               <p className="text-slate-600">{result.datasetName}</p>
               <p className="text-slate-500 text-sm">
                 Generated on {new Date(result.uploadDate).toLocaleDateString()}

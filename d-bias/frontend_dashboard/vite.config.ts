@@ -18,5 +18,12 @@
     server: {
       port: 3000,
       open: true,
+      // Use polling for file watching on platforms where native watchers are unreliable
+      // (OneDrive, some Windows setups, or locked files). Polling is slightly heavier
+      // but avoids EPERM/rename failures when chokidar/watchdog can't use native APIs.
+      watch: {
+        usePolling: true,
+        interval: 1000, // ms between polls
+      },
     },
   });
