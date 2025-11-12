@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import Logo from '../assets/d-bias-logo.svg';
+import Logo from '../assets/logo-d-bias.svg';
 import { User, History, LogOut, Menu, X } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import type { AnalysisResult } from '../App';
@@ -146,16 +146,12 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
 
       {/* History Dialog */}
       <Dialog open={openHistory} onOpenChange={setOpenHistory}>
-        <DialogContent className="max-w-md relative">
-                <DialogHeader>
-                  <DialogTitle>Analysis History</DialogTitle>
-                </DialogHeader>
-                {/* top-right close button */}
-                <div className="absolute top-3 right-3">
-                  <Button variant="ghost" size="icon" onClick={() => setOpenHistory(false)} aria-label="Close history">
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+        <DialogContent className="max-w-md">
+          <div className="w-full relative">
+            <DialogHeader className="w-full text-center">
+              <DialogTitle>Analysis History</DialogTitle>
+            </DialogHeader>
+            {/* Close button intentionally removed per request */}
 
             <div className="space-y-3 max-h-96 overflow-y-auto mt-3">
               {!isAuthenticated ? (
@@ -232,8 +228,12 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
                 ))
               )}
             </div>
+          </div>
 
-          {/* Footer area for history dialog (logout removed per request) */}
+          {/* Footer area for history dialog (Close button) */}
+          <div className="mt-4 flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setOpenHistory(false)}>Close</Button>
+          </div>
           </DialogContent>
       </Dialog>
       {/* Logout confirmation dialog */}
@@ -243,7 +243,7 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
             <DialogTitle>Confirm logout</DialogTitle>
           </DialogHeader>
           <div className="py-2 text-sm text-slate-700">Are you sure you want to log out?</div>
-          <div className="mt-4 flex justify-end gap-2">
+          <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLogoutConfirmOpen(false)}>
               No
             </Button>
@@ -258,7 +258,7 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
             >
               Yes
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Profile Dialog */}
