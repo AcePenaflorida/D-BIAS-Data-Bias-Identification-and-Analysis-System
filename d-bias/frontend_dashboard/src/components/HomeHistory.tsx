@@ -38,12 +38,12 @@ export function HomeHistory({ history, onPreview, onOpen }: HomeHistoryProps) {
     return (
       <section className="mt-8">
         <Card className="p-6 bg-gradient-to-r from-white via-slate-50 to-white border border-slate-100 rounded-xl">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center text-center gap-4">
             <div className="w-14 h-14 bg-white rounded-lg flex items-center justify-center shadow-sm">
               <Clock className="w-6 h-6 text-slate-400" />
             </div>
 
-            <div className="flex-1">
+            <div className="w-full">
               <h3 className="text-slate-900 text-lg font-semibold">Analysis History</h3>
               <p className="text-slate-500 text-sm mt-1">Your past dataset analyses will appear here. Run an analysis to populate your history.</p>
               <div className="mt-4">
@@ -66,15 +66,15 @@ export function HomeHistory({ history, onPreview, onOpen }: HomeHistoryProps) {
   {/* Show roughly 3 cards worth of height and scroll when there are more items */}
   <div className={`flex flex-col gap-4 max-h-[360px] overflow-y-auto pr-2`}> 
         {recent.map((h) => (
-          <Card key={h.id} className="w-full min-h-[120px] p-4 hover:shadow-lg transition-shadow rounded-lg border border-slate-100 bg-white">
-            <div className="flex items-start gap-3">
+          <Card key={h.id} className="max-w-3xl mx-auto min-h-[120px] p-4 hover:shadow-lg transition-shadow rounded-lg border border-slate-100 bg-white">
+            <div className="flex flex-col items-center text-center gap-3">
               <div className="w-16 h-16 flex items-center justify-center">
                 <FairnessDonut score={h.fairnessScore} size={56} strokeWidth={8} showCenterText={false} />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
+              <div className="w-full">
+                <div className="flex items-center justify-center gap-2">
                   <div className="text-sm text-slate-700 font-medium truncate">{h.datasetName}</div>
-                  <div className={`ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border ${getFairnessPill(h.fairnessLabel)}`}>
+                  <div className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border ${getFairnessPill(h.fairnessLabel)}`}>
                     {h.fairnessLabel}
                   </div>
                 </div>
@@ -82,7 +82,7 @@ export function HomeHistory({ history, onPreview, onOpen }: HomeHistoryProps) {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between">
+            <div className="mt-3 flex items-center justify-center gap-3">
               <Button size="sm" variant="outline" onClick={() => onPreview(h)}>Preview</Button>
               <Button size="sm" onClick={() => onOpen(h)}>Open</Button>
             </div>
