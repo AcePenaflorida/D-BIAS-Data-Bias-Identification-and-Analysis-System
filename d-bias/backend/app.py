@@ -7,6 +7,9 @@ import re
 import os
 import time
 import traceback
+import threading
+import random
+import hashlib
  
 import json
 from datetime import timedelta
@@ -134,6 +137,17 @@ def get_cache_file() -> str:
 # ------------------------
 _GEMINI_COOLDOWN_UNTIL = 0.0  # epoch seconds until which we should skip Gemini calls
 
+# Concurrency and pacing controls for Gemini
+_GEMINI_MAX_CONCURRENCY = max(1, int(os.getenv("GEMINI_MAX_CONCURRENCY", "1")))
+_GEMINI_SEM = threading.Semaphore(_GEMINI_MAX_CONCURRENCY)
+_GEMINI_MIN_INTERVAL_SEC = max(0.0, float(os.getenv("GEMINI_MIN_INTERVAL_MS", "1500")) / 1000.0)
+_GEMINI_DISABLE_WAIT = os.getenv("GEMINI_DISABLE_WAIT", "false").lower() == "true"
+_last_gemini_call_at = 0.0
+_last_gemini_lock = threading.Lock()
+
+# In-memory cache for identical prompts to avoid re-calling Gemini unnecessarily
+_GEMINI_CACHE: dict[str, str] = {}
+
 def _parse_retry_after_seconds_from_error_text(text: str) -> int | None:
     """Best-effort parse of retry delay seconds from Gemini error text.
 
@@ -180,6 +194,32 @@ def get_gemini_cooldown_remaining() -> int:
     return remaining
 
 
+def _enforce_min_interval():
+    """Ensure at least GEMINI_MIN_INTERVAL_MS elapses between Gemini calls."""
+    if _GEMINI_DISABLE_WAIT or _GEMINI_MIN_INTERVAL_SEC <= 0:
+        return
+    global _last_gemini_call_at
+    with _last_gemini_lock:
+        now = time.time()
+        wait = (_last_gemini_call_at + _GEMINI_MIN_INTERVAL_SEC) - now
+        if wait > 0:
+            time.sleep(wait)
+        _last_gemini_call_at = time.time()
+
+
+def _prompt_cache_key(bias_report, dataset_name: str, shape, excluded_columns):
+    try:
+        payload = json.dumps({
+            "dataset": dataset_name,
+            "shape": shape,
+            "excluded": excluded_columns,
+            "bias_report": bias_report,
+        }, sort_keys=True, default=str)
+    except Exception:
+        payload = f"{dataset_name}|{shape}|{excluded_columns}|{str(bias_report)[:200000]}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def handle_gemini_error(err: Exception, log) -> str:
     """Record cooldown for 429/rate-limit errors and return a user-friendly message.
 
@@ -203,38 +243,88 @@ def handle_gemini_error(err: Exception, log) -> str:
     return f"Gemini summary failed: {msg}"
 
 def maybe_run_gemini_summary(run_gemini: bool, gemini_key: str, bias_report, dataset_name: str, shape, excluded_columns, log):
-    """Optionally run Gemini summary and return ai_output (or None).
+    """Optionally run Gemini with retries, pacing and caching. Returns ai_output (or None).
 
-    Mirrors the original try/except behavior and logging without changing semantics.
+    Behavior:
+    - Respects global cooldown if already set.
+    - Uses a global semaphore to limit parallel calls.
+    - Enforces a minimum interval between successive calls.
+    - Retries on rate-limit with server-advised delay + jitter.
+    - Caches successful outputs keyed by prompt payload.
     """
     ai_output = None
-    if run_gemini and gemini_key:
-        # If we're within a cooldown window, skip hitting the API and return a helpful message.
-        remaining = get_gemini_cooldown_remaining()
-        if remaining > 0:
-            ai_output = f"Gemini temporarily rate-limited; {remaining}s remaining before retry."
+    if not (run_gemini and gemini_key):
+        return ai_output
+
+    # Honor active cooldown to avoid immediate 429s
+    remaining = get_gemini_cooldown_remaining()
+    if remaining > 0 and not _GEMINI_DISABLE_WAIT:
+        if log:
+            log(f"gemini_wait_cooldown {remaining}s before retry")
+        time.sleep(remaining)
+
+    # Cache lookup
+    try:
+        cache_key = _prompt_cache_key(bias_report, dataset_name, shape, excluded_columns)
+        cached = _GEMINI_CACHE.get(cache_key)
+        if cached:
             if log:
-                log(f"gemini_skip_due_to_cooldown remaining={remaining}s")
-            return ai_output
+                log("gemini_cache_hit true")
+            return cached
+    except Exception:
+        cache_key = None
+
+    max_retries = max(0, int(os.getenv("GEMINI_MAX_RETRIES", "2")))
+    attempt = 0
+    while attempt <= max_retries:
+        attempt += 1
         try:
-            gemini = GeminiConnector(gemini_key)
-            ai_output = gemini.summarize_biases(
-                bias_report,
-                dataset_name=dataset_name,
-                shape=shape,
-                excluded_columns=excluded_columns,
-            )
-            # If the connector returned an error as plain text, detect rate limit and set cooldown
+            # Concurrency control + pacing
+            with _GEMINI_SEM:
+                _enforce_min_interval()
+                gemini = GeminiConnector(gemini_key)
+                ai_output = gemini.summarize_biases(
+                    bias_report,
+                    dataset_name=dataset_name,
+                    shape=shape,
+                    excluded_columns=excluded_columns,
+                )
+            # Check for textual rate-limit signals
             if isinstance(ai_output, str):
                 lower = ai_output.lower()
                 if ("429" in lower) or ("quota" in lower) or ("rate limit" in lower) or ("rate-limit" in lower):
                     secs = _parse_retry_after_seconds_from_error_text(ai_output) or 20
                     _set_gemini_cooldown(secs, log)
+                    if attempt <= max_retries and not _GEMINI_DISABLE_WAIT:
+                        jitter = random.uniform(0.2, 0.4) * secs
+                        if log:
+                            log(f"gemini_rate_limited (text) retry_after={secs}s attempt={attempt}/{max_retries} jitter={int(jitter)}s")
+                        time.sleep(secs + jitter)
+                        continue
                     if log:
-                        log(f"gemini_rate_limited (text) retry_after={secs}s")
+                        log(f"gemini_rate_limited (text) retry_after={secs}s no-more-retries")
+            # Success path: cache and return
+            if cache_key and isinstance(ai_output, str) and ai_output and not ai_output.startswith("❌"):
+                _GEMINI_CACHE[cache_key] = ai_output
+            return ai_output
         except Exception as eg:
-            ai_output = handle_gemini_error(eg, log)
-            log(f"gemini_error={eg}")
+            # Parse error and decide whether to retry
+            msg = str(eg)
+            lower = msg.lower()
+            if ("429" in lower) or ("quota" in lower) or ("rate limit" in lower) or ("rate-limit" in lower):
+                secs = _parse_retry_after_seconds_from_error_text(msg) or 20
+                _set_gemini_cooldown(secs, log)
+                if attempt <= max_retries and not _GEMINI_DISABLE_WAIT:
+                    jitter = random.uniform(0.2, 0.4) * secs
+                    if log:
+                        log(f"gemini_rate_limited exception retry_after={secs}s attempt={attempt}/{max_retries} jitter={int(jitter)}s")
+                    time.sleep(secs + jitter)
+                    continue
+            # Non-rate-limit or no more retries: log and return handled error text
+            handled = handle_gemini_error(eg, log)
+            if log:
+                log(f"gemini_error_final attempt={attempt} err={eg}")
+            return handled
     return ai_output
 
 

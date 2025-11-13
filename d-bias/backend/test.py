@@ -4,9 +4,7 @@ import os
 import re
 
 
-
-filepath = "C:\\Users\\ACER\\Documents\\_Projects\\D-BIAS\\d-bias\\_data\\sample_datasets\\lifestyle.csv"
-
+filepath = "C:\\Users\\ACER\\Documents\\_Projects\\D-BIAS\\d-bias\\_data\\sample_datasets\\bmw.csv"
 
 class BackendTester:
     def __init__(self, csv_path=filepath):
