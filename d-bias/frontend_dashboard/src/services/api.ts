@@ -7,6 +7,27 @@ async function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Abort-aware delay: rejects with AbortError if signal aborts during wait
+async function abortableDelay(ms: number, signal?: AbortSignal) {
+  if (!signal) return delay(ms);
+  if (signal.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
+  return new Promise<void>((resolve, reject) => {
+    const tid = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+    };
+    const cleanup = () => {
+      clearTimeout(tid);
+      signal.removeEventListener('abort', onAbort);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -47,6 +68,132 @@ async function fetchWithRetry(
   throw lastErr || new Error('Network error');
 }
 
+// Parse numbered markdown list into array items while preserving item text
+function parseRecommendations(text: string): string[] {
+  const src = String(text || '').trim();
+  if (!src) return [];
+  const items: string[] = [];
+  const re = /(^|\n)\s*\d+\.\s+([\s\S]*?)(?=(\n\s*\d+\.\s)|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    const item = (m[2] || '')
+      .replace(/\n+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (item) items.push(item);
+  }
+  // Fallback: if regex found nothing, try splitting by bullet lines while keeping content
+  if (!items.length) {
+    const rough = src.split(/\n+\s*(?:[-*•]|\d+\.)\s+/).map(s => s.trim()).filter(Boolean);
+    return rough.length ? rough : [src];
+  }
+  return items;
+}
+
+// Remove global sections (summary/reliability/recommendations) from a bias-level explanation
+function sanitizeAiExplanation(text: string, fallback?: string): string {
+  const src = String(text || '');
+  if (!src.trim()) return String(fallback || '').trim();
+  const patterns: RegExp[] = [
+    /(^|\n)\s*#{0,6}\s*\**\s*Summary\s*(?:&|and)\s*Recommendations\s*\**\s*:?/i,
+    /(^|\n)\s*#{0,6}\s*\**\s*Overall\s+Reliability\s+Assessment\s*\**\s*:?/i,
+    /(^|\n)\s*#{0,6}\s*\**\s*Fairness\s*&\s*Ethical\s*Implications\s*\**\s*:?/i,
+    /(^|\n)\s*#{0,6}\s*\**\s*Concluding\s+Summary\s*\**\s*:?/i,
+    /(^|\n)\s*#{0,6}\s*\**\s*Actionable\s+Recommendations\s*\**\s*:?/i,
+  ];
+  let cutAt = -1;
+  for (const re of patterns) {
+    const idx = src.search(re);
+    if (idx >= 0) cutAt = cutAt === -1 ? idx : Math.min(cutAt, idx);
+  }
+  const trimmed = (cutAt >= 0 ? src.slice(0, cutAt) : src).trim();
+  return trimmed || String(fallback || '').trim();
+}
+
+// Canonical mapper: derive AnalysisResult strictly from analysis_response.json keys
+function mapAnalysisFromJson(data: any, datasetName: string): AnalysisResult {
+  const fairnessScore = Number(data?.fairness_score ?? 0);
+  const fairnessLabel = toLabel(fairnessScore);
+  const biasRisk = toRisk(fairnessScore);
+
+  const reliabilityRaw = String(data?.reliability?.reliability_level || '').toLowerCase();
+  const reliabilityLevel: AnalysisResult['reliabilityLevel'] =
+    reliabilityRaw === 'high' ? 'High' : reliabilityRaw === 'low' ? 'Low' : 'Moderate';
+  const reliabilityMessage: string | undefined = data?.reliability?.message;
+
+  const ns = data?.numeric_summary || {};
+  const overall = (data?.summary ?? '').toString();
+  const plots = data && typeof data.plots === 'object' ? data.plots : undefined;
+
+  // Bias cards from mapped_biases[]; enrich with bias_report Type/Feature by index from bias_id
+  const biasReport: any[] = Array.isArray(data?.bias_report) ? data.bias_report : [];
+  const detectedBiases = Array.isArray(data?.mapped_biases)
+    ? (data.mapped_biases as any[]).map((mb: any) => {
+        const id = String(mb.bias_id || '').trim();
+        const idx = (() => {
+          const m = id.match(/(\d{4})$/);
+          return m ? Math.max(0, parseInt(m[1], 10) - 1) : -1;
+        })();
+        const raw = idx >= 0 && idx < biasReport.length ? biasReport[idx] : null;
+        const type = (raw?.Type ?? raw?.type ?? '').toString();
+        const feature = (raw?.Feature ?? raw?.feature ?? '').toString();
+        const sev = (mb.severity ?? raw?.Severity ?? raw?.severity ?? '').toString();
+        const desc = (mb.description ?? raw?.Description ?? raw?.description ?? '').toString();
+        const ai = sanitizeAiExplanation((mb.ai_explanation ?? '').toString(), desc);
+        return {
+          id: id || `bias-${idx >= 0 ? idx : Date.now()}`,
+          bias_type: type || '',
+          column: feature || '',
+          severity: (sev || 'Moderate') as AnalysisResult['detectedBiases'][number]['severity'],
+          description: desc,
+          ai_explanation: ai,
+          definition: type || '',
+        };
+      })
+    : [];
+
+  const assessmentFairness = (data?.fairness_ethics ?? data?.overall_reliability_assessment ?? '').toString();
+  const assessmentConclusion = (data?.concluding_summary ?? '').toString();
+  const assessmentRecs = parseRecommendations((data?.actionable_recommendations ?? '').toString());
+  const totalBiases = Number(data?.total_biases ?? (Array.isArray(data?.mapped_biases) ? data.mapped_biases.length : 0));
+  const severitySummary = (data?.severity_summary && typeof data.severity_summary === 'object') ? data.severity_summary : undefined;
+
+  return {
+    id: `analysis-${Date.now()}`,
+    datasetName,
+    uploadDate: new Date().toISOString(),
+    status: 'complete',
+    dataset: {
+      rows: Number(ns?.n_rows ?? 0),
+      columns: Number(ns?.n_columns ?? 0),
+      mean: Number(ns?.mean ?? 0),
+      median: Number(ns?.median ?? 0),
+      mode: Number(ns?.mode ?? 0),
+      max: Number(ns?.max ?? 0),
+      min: Number(ns?.min ?? 0),
+      stdDev: Number(ns?.std_dev ?? 0),
+      variance: Number(ns?.variance ?? 0),
+    },
+    fairnessScore,
+    fairnessLabel,
+    biasRisk,
+    reliabilityLevel,
+    reliabilityMessage,
+    overallMessage: overall,
+    totalBiases,
+    severitySummary,
+    detectedBiases,
+    assessment: {
+      fairness: assessmentFairness,
+      recommendations: assessmentRecs,
+      conclusion: assessmentConclusion,
+    },
+    distributions: [],
+    rawBiasReport: biasReport,
+    plots,
+  } as AnalysisResult;
+}
+
 function toLabel(score: number): AnalysisResult['fairnessLabel'] {
   return score >= 85 ? 'Excellent' : score >= 70 ? 'Good' : score >= 55 ? 'Fair' : score >= 40 ? 'Poor' : 'Critical';
 }
@@ -74,82 +221,26 @@ export async function analyzeDataset(
     signal,
   );
   const data = await res.json();
+  return mapAnalysisFromJson(data, file.name);
+}
 
-  const fairnessScore = Number(data.fairness_score ?? data.dataset_summary?.fairness_score ?? 0);
-  const fairnessLabel = toLabel(fairnessScore);
-  const biasRisk = toRisk(fairnessScore);
-  const reliabilityRaw = String(data.reliability?.reliability_level || 'moderate').toLowerCase();
-  const reliabilityLevel: AnalysisResult['reliabilityLevel'] = reliabilityRaw === 'high' ? 'High' : reliabilityRaw === 'low' ? 'Low' : 'Moderate';
-  const reliabilityMessage: string | undefined = data.reliability?.message;
+// Simple client-side throttle to avoid burst hitting Gemini/server from the UI.
+// Controlled by env var VITE_ANALYZE_MIN_INTERVAL_MS (default 3000ms).
+const MIN_ANALYZE_INTERVAL_MS = Number((import.meta as any).env?.VITE_ANALYZE_MIN_INTERVAL_MS ?? 3000);
+let lastAnalyzeAt = 0;
 
-  const mappedBiasesGroups = data.mapped_biases?.bias_types || {};
-  // Normalize AI explanations ensuring non-empty readable text; if backend provided bullets, reconstruct markdown list
-  const flattenedBiases = Object.entries(mappedBiasesGroups).flatMap(([type, arr]: any) =>
-    (arr || []).map((b: any, idx: number) => {
-      const rawAi = (b.ai_explanation ?? '').toString().trim();
-      const desc = (b.description ?? '').toString().trim();
-      const bullets: string[] = Array.isArray(b.ai_explanation_bullets) ? b.ai_explanation_bullets : [];
-      let ai = rawAi && rawAi.toLowerCase() !== 'none' && rawAi.length > 5 ? rawAi : (desc || 'No AI explanation available.');
-      // If ai does not contain any markdown header but bullets exist, build a synthetic explanation block
-      if (bullets.length && !/^#{2,6}\s/.test(ai)) {
-        const headerGuess = `#### ${type}: \`${b.feature || 'feature'}\``;
-        const bulletBlock = bullets.map(bt => `* ${bt}`).join('\n');
-        ai = `${headerGuess}\n${bulletBlock}`.trim();
-      }
-      return {
-        id: `${type}-${idx}`,
-        bias_type: type,
-        column: b.feature || 'unknown',
-        severity: (b.severity || 'Moderate') as any,
-        description: desc,
-        ai_explanation: ai,
-        definition: type,
-      };
-    })
-  );
-
-  const ds = data.numeric_summary || {};
-  const overall = data.summary || data.dataset_summary || '';
-  const plots = (data.plots && typeof data.plots === 'object') ? data.plots : undefined;
-  const overallMapped = data.mapped_biases?.overall || {};
-  const recs: string[] = overallMapped.actionable_recommendations || [];
-  const conclusion: string = overallMapped.conclusion || 'No conclusion available.';
-  const fairnessAssess: string = overallMapped.fairness || overallMapped.assessment || overall || 'Fairness assessment unavailable.';
-
-  const result: AnalysisResult = {
-    id: `analysis-${Date.now()}`,
-    datasetName: file.name,
-    uploadDate: new Date().toISOString(),
-    status: 'complete',
-    dataset: {
-      rows: Number(ds.n_rows || ds.rows || 0),
-      columns: Number(ds.n_columns || ds.columns || 0),
-      mean: Number(ds.mean || 0),
-      median: Number(ds.median || 0),
-      mode: Number(ds.mode || 0),
-      max: Number(ds.max || 0),
-      min: Number(ds.min || 0),
-      stdDev: Number(ds.std_dev || ds.stdDev || 0),
-      variance: Number(ds.variance || 0),
-    },
-    fairnessScore,
-    fairnessLabel,
-    biasRisk,
-    reliabilityLevel,
-  reliabilityMessage,
-    overallMessage: String(overall || 'Analysis complete.'),
-    detectedBiases: flattenedBiases,
-    assessment: {
-      fairness: fairnessAssess,
-      recommendations: recs.length ? recs : [reliabilityLevel === 'High' ? 'Maintain current data collection practices.' : 'Review data collection for potential sampling bias.', 'Implement periodic fairness audits.'],
-      conclusion: conclusion || (reliabilityLevel === 'High' ? 'Dataset appears fair.' : 'Further review recommended.'),
-    },
-    distributions: [],
-    rawBiasReport: Array.isArray(data.bias_report) ? data.bias_report : [],
-    plots,
-  };
-
-  return result;
+export async function analyzeDatasetThrottled(
+  file: File,
+  opts: { runGemini: boolean; returnPlots: 'none' | 'json' | 'png' | 'both' } = { runGemini: true, returnPlots: 'json' },
+  signal?: AbortSignal,
+): Promise<AnalysisResult> {
+  const now = Date.now();
+  const waitMs = Math.max(0, lastAnalyzeAt + MIN_ANALYZE_INTERVAL_MS - now);
+  if (waitMs > 0) {
+    await abortableDelay(waitMs, signal);
+  }
+  lastAnalyzeAt = Date.now();
+  return analyzeDataset(file, opts, signal);
 }
 
 // Fetch the latest cached analysis JSON from backend without uploading a file.
@@ -184,80 +275,9 @@ export async function fetchLatestCachedAnalysis(signal?: AbortSignal): Promise<A
   } catch {
     return null;
   }
-  // Reuse mapping logic: synthesize a pseudo File object context for naming.
-  const fakeFile = new File([""], data?.dataset_name || 'cached_dataset.csv');
-  // We can piggyback on analyzeDataset's mapping by extracting shared code; for now duplicate minimal transform.
-  const fairnessScore = Number(data.fairness_score ?? data.dataset_summary?.fairness_score ?? 0);
-  const fairnessLabel = toLabel(fairnessScore);
-  const biasRisk = toRisk(fairnessScore);
-  const reliabilityRaw = String(data.reliability?.reliability_level || 'moderate').toLowerCase();
-  const reliabilityLevel: AnalysisResult['reliabilityLevel'] = reliabilityRaw === 'high' ? 'High' : reliabilityRaw === 'low' ? 'Low' : 'Moderate';
-  const reliabilityMessage: string | undefined = data.reliability?.message;
-
-  const mappedBiasesGroups = data.mapped_biases?.bias_types || {};
-  const flattenedBiases = Object.entries(mappedBiasesGroups).flatMap(([type, arr]: any) =>
-    (arr || []).map((b: any, idx: number) => {
-      const rawAi = (b.ai_explanation ?? '').toString().trim();
-      const desc = (b.description ?? '').toString().trim();
-      const bullets: string[] = Array.isArray(b.ai_explanation_bullets) ? b.ai_explanation_bullets : [];
-      let ai = rawAi && rawAi.toLowerCase() !== 'none' && rawAi.length > 5 ? rawAi : (desc || 'No AI explanation available.');
-      if (bullets.length && !/^#{2,6}\s/.test(ai)) {
-        const headerGuess = `#### ${type}: \`${b.feature || 'feature'}\``;
-        const bulletBlock = bullets.map(bt => `* ${bt}`).join('\n');
-        ai = `${headerGuess}\n${bulletBlock}`.trim();
-      }
-      return {
-        id: `${type}-${idx}`,
-        bias_type: type,
-        column: b.feature || 'unknown',
-        severity: (b.severity || 'Moderate') as any,
-        description: desc,
-        ai_explanation: ai,
-        definition: type,
-      };
-    })
-  );
-
-  const ds = data.numeric_summary || {};
-  const overall = data.summary || data.dataset_summary || '';
-  const plots = (data.plots && typeof data.plots === 'object') ? data.plots : undefined;
-  const overallMapped = data.mapped_biases?.overall || {};
-  const recs: string[] = overallMapped.actionable_recommendations || [];
-  const conclusion: string = overallMapped.conclusion || 'No conclusion available.';
-  const fairnessAssess: string = overallMapped.fairness || overallMapped.assessment || overall || 'Fairness assessment unavailable.';
-
-  return {
-    id: `cached-${Date.now()}`,
-    datasetName: fakeFile.name,
-    uploadDate: new Date().toISOString(),
-    status: 'complete',
-    dataset: {
-      rows: Number(ds.rows || ds.n_rows || 0),
-      columns: Number(ds.columns || ds.n_columns || 0),
-      mean: Number(ds.mean || 0),
-      median: Number(ds.median || 0),
-      mode: Number(ds.mode || 0),
-      max: Number(ds.max || 0),
-      min: Number(ds.min || 0),
-      stdDev: Number(ds.std_dev || ds.stdDev || 0),
-      variance: Number(ds.variance || 0),
-    },
-    fairnessScore,
-    fairnessLabel,
-    biasRisk,
-    reliabilityLevel,
-    reliabilityMessage,
-    overallMessage: String(overall || 'Cached analysis.'),
-    detectedBiases: flattenedBiases,
-    assessment: {
-      fairness: fairnessAssess,
-      recommendations: recs.length ? recs : [reliabilityLevel === 'High' ? 'Maintain current data collection practices.' : 'Review data collection for potential sampling bias.', 'Implement periodic fairness audits.'],
-      conclusion: conclusion || (reliabilityLevel === 'High' ? 'Dataset appears fair.' : 'Further review recommended.'),
-    },
-    distributions: [],
-    rawBiasReport: Array.isArray(data.bias_report) ? data.bias_report : [],
-    plots,
-  } as AnalysisResult;
+  // Use canonical mapper for cached loads as well
+  const datasetName = (data?.dataset_name || 'cached_dataset.csv').toString();
+  return mapAnalysisFromJson(data, datasetName);
 }
 
 // Shape returned by backend /api/upload on success

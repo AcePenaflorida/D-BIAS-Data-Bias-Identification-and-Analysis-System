@@ -12,3 +12,4 @@ kaleido
 reportlab
 Pillow
 flask-cors
+requests

@@ -1,15 +1,17 @@
 import { Card } from './ui/card';
 import { Progress } from './ui/progress';
 import FairnessDonut from './charts/FairnessDonut';
+import type { ReactNode } from 'react';
 
 interface StatCardProps {
   title: string;
-  value: string | number;
+  value: ReactNode;
   variant?: 'default' | 'success' | 'error';
   showProgress?: boolean;
   showDonut?: boolean;
   max?: number;
   className?: string;
+  compact?: boolean;
 }
 
 export function StatCard({
@@ -20,6 +22,7 @@ export function StatCard({
   showDonut = false,
   max = 100,
   className,
+  compact = false,
 }: StatCardProps) {
   const getVariantClasses = () => {
     switch (variant) {
@@ -43,19 +46,23 @@ export function StatCard({
     }
   };
 
+  const pad = compact ? 'p-4' : 'p-5';
+  const titleCls = compact ? 'text-slate-600 text-xs mb-1' : 'text-slate-600 text-sm mb-2';
+  const valueCls = compact ? `text-xl ${getValueColor()}` : `text-2xl ${getValueColor()}`;
+
   return (
-    <Card className={`p-5 ${getVariantClasses()} ${className || ''}`}>
-      <p className="text-slate-600 text-sm mb-2">{title}</p>
+    <Card className={`${pad} ${getVariantClasses()} ${className || ''}`}>
+      <p className={titleCls}>{title}</p>
 
       {showDonut && typeof value === 'number' ? (
         <div className="flex-1 flex items-center justify-center">
-          <FairnessDonut score={Number(value)} size={88} strokeWidth={10} showCenterText />
+          <FairnessDonut score={Number(value)} size={compact ? 68 : 88} strokeWidth={10} showCenterText />
         </div>
       ) : (
         <>
-          <p className={`text-2xl ${getValueColor()}`}>{value}</p>
+          <div className={valueCls}>{value}</div>
           {showProgress && typeof value === 'number' && (
-            <div className="mt-3">
+            <div className={`mt-3 ${compact ? 'mt-2' : ''}`}>
               <Progress value={value} max={max} className="h-2" />
             </div>
           )}

@@ -26,6 +26,14 @@ export interface AnalysisResult {
   reliabilityLevel: 'High' | 'Moderate' | 'Low';
   reliabilityMessage?: string;
   overallMessage: string;
+  totalBiases?: number;
+  severitySummary?: {
+    High?: number;
+    Moderate?: number;
+    Low?: number;
+    Critical?: number;
+    [k: string]: number | undefined;
+  };
   detectedBiases: Array<{
     id: string;
     bias_type: string;

@@ -8,8 +8,7 @@ import { Header } from './Header';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
-// TODO: create services/api.ts to provide analyzeDataset; temporary inline fallback below.
-// import { analyzeDataset } from '../services/api';
+import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo } from '../services/api';
 
 interface UploadPageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
@@ -19,8 +18,6 @@ interface UploadPageProps {
   userHistory: AnalysisResult[];
   onViewHistory: (result: AnalysisResult) => void;
 }
-
-import { analyzeDataset, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo } from '../services/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 
 export function UploadPage({
@@ -178,7 +175,7 @@ export function UploadPage({
     setAnalysisController(controller);
 
     try {
-      const result = await analyzeDataset(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
+      const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
       onAnalysisComplete(result);
     } catch (e: any) {
       if (e?.name === 'AbortError') {

@@ -115,7 +115,24 @@ export function Dashboard({
               />
               <StatCard
                 title="Bias Risk"
-                value={result.biasRisk}
+                  value={
+                    <div className="flex items-center flex-wrap gap-2 text-base">
+                      <span className="text-2xl font-semibold leading-tight mr-1">{result.biasRisk}</span>
+                      <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-slate-50 text-slate-700 border-slate-200">
+                        Total: {typeof (result as any).totalBiases === 'number' ? (result as any).totalBiases : result.detectedBiases.length}
+                      </span>
+                      {result.severitySummary && (
+                        <>
+                          {typeof result.severitySummary.Critical === 'number' && (
+                            <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-red-100 text-red-700 border-red-200">Crit: {result.severitySummary.Critical}</span>
+                          )}
+                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-rose-50 text-rose-700 border-rose-200">High: {result.severitySummary.High ?? 0}</span>
+                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-amber-50 text-amber-700 border-amber-200">Mod: {result.severitySummary.Moderate ?? 0}</span>
+                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-emerald-50 text-emerald-700 border-emerald-200">Low: {result.severitySummary.Low ?? 0}</span>
+                        </>
+                      )}
+                    </div>
+                  }
                 className={getRiskColor(result.biasRisk)}
               />
             </div>
