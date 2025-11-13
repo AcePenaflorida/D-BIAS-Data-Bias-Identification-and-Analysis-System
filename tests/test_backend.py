@@ -291,83 +291,84 @@ def load_saved_analysis(file_path):
     with open(file_path, "r", encoding="utf-8") as rf:
         return json.load(rf)
 
-
 def display_analysis_results(data):
     """Display bias analysis results in a formatted way."""
     print("\n✅ Bias Analysis Complete!")
-    print(f"Fairness Score: {data.get('fairness_score')}")
+    print(f"Fairness Score: {data.get('fairness_score', '(none)')}")
 
     print("\n--- Bias Report ---")
-    print(data.get("bias_report") if data.get("bias_report") is not None else "No bias_report returned by backend.")
+    print(data.get("bias_report") or "No bias_report returned by backend.")
 
     print("\n--- Dataset Summary ---")
-    print(data.get("dataset_summary", "No summary available."))
-    
+    print(data.get("dataset_summary") or "No summary available.")
+
     print("\n--- Reliability ---")
-    print(data.get("reliability", "No reliability info available."))
+    print(data.get("reliability") or "No reliability info available.")
+
+    print("\n--- Severity Summary ---")
+    print(data.get("severity_summary") or "No severity summary available.")
+
+    print("\n--- Total Biases Detected ---")
+    print(data.get("total_biases", 0))
 
     print("\n--- Gemini Summary ---")
-    print(data.get("summary", "No AI summary generated."))
+    print(data.get("summary") or "No AI summary generated.")
 
-    # Display mapped biases with bullet formatting
-    mapped = data.get("mapped_biases") or {}
+    # Display mapped biases
+    mapped = data.get("mapped_biases")
     print("\n--- MAPPED BIASES ---")
-    print(mapped)
-    bias_types = (mapped or {}).get("bias_types", {}) or {}
-    if not bias_types:
+    
+    if not mapped:
         print("(none)")
     else:
-        for btype, items in bias_types.items():
-            print(f"\n• {btype}")
-            if not items:
-                print("   - (no items)")
-                continue
-            for it in items:
+        # If mapped is a dict with "biases" key
+        if isinstance(mapped, dict):
+            biases_list = mapped.get("biases", [])
+        # If mapped is already a list of biases
+        elif isinstance(mapped, list):
+            biases_list = mapped
+        else:
+            biases_list = []
+
+        if not biases_list:
+            print("(none)")
+        else:
+            for it in biases_list:
                 feat = it.get("feature") or "unknown"
                 sev = it.get("severity") or ""
                 desc = (it.get("description") or "").strip()
                 ai = (it.get("ai_explanation") or "").strip()
                 ai_bullets = it.get("ai_explanation_bullets") or []
-                print(f"   - Feature: {feat}")
+
+                print(f"\n• Feature: {feat}")
                 if sev:
-                    print(f"     Severity: {sev}")
+                    print(f"  Severity: {sev}")
                 if desc:
-                    print(f"     Description: {desc}")
+                    print(f"  Description: {desc}")
                 if ai:
-                    print("     AI Explanation:")
+                    print("  AI Explanation:")
                     if ai_bullets:
                         for bullet in ai_bullets:
                             cleaned = re.sub(r"^(?:\*+\s*|[-•]\s*|\d+\.?\s*)", "", bullet.strip())
-                            print(f"       • {cleaned}")
+                            print(f"    • {cleaned}")
                     else:
-                        # Fallback: line-split
                         ai_lines = [l.strip() for l in ai.splitlines() if l.strip()]
                         for line in ai_lines:
                             cleaned = re.sub(r"^(?:\*+\s*|[-•]\s*|\d+\.?\s*)", "", line)
-                            print(f"       • {cleaned}")
-                print("")
-    
+                            print(f"    • {cleaned}")
+
+    # Display mapping errors
     mapped_err = data.get("mapped_biases_error")
     if mapped_err:
         print("\n--- Mapping Error ---")
         print(mapped_err)
 
-    # Print overall assessment
-    overall = (mapped or {}).get("overall", {}) or {}
-    if overall:
-        print("\n--- MAPPED OVERALL ---")
-        print("Assessment:\n", overall.get("assessment") or "(none)")
-        print("\nFairness:\n", overall.get("fairness") or "(none)")
-        print("\nConclusion:\n", overall.get("conclusion") or "(none)")
-        
-        ar = overall.get("actionable_recommendations") or overall.get("actionable_recommendations_raw")
-        if isinstance(ar, list):
-            print("\nActionable Recommendations:")
-            for i, item in enumerate(ar, start=1):
-                print(f"{i}. {item}")
-        else:
-            print("\nActionable Recommendations:\n", ar or "(none)")
-
+    # Print overall assessment (top-level fields)
+    print("\n--- OVERALL ASSESSMENT ---")
+    print(f"Overall Reliability Assessment:\n{data.get('overall_reliability_assessment', '(none)')}")
+    print(f"\nFairness & Ethics:\n{data.get('fairness_ethics', '(none)')}")
+    print(f"\nConcluding Summary:\n{data.get('concluding_summary', '(none)')}")
+    print(f"\nActionable Recommendations:\n{data.get('actionable_recommendations', '(none)')}")
 
 # ==================== PDF GENERATION ====================
 
@@ -407,7 +408,7 @@ def generate_pdf_report(config, data, output_pdf_path=None):
 
 # ==================== MAIN WORKFLOW ====================
 
-def run_analysis_workflow(config, supabase, use_cache=False, run_gemini=True, upload_to_supabase=True):
+def run_analysis_workflow(config, supabase, use_cache=False, run_gemini=False, upload_to_supabase=True):
     """
     Run the complete bias analysis workflow.
     

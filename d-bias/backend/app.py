@@ -3,10 +3,11 @@ from flask import Flask, request, jsonify, make_response
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
+import re
 import os
 import time
 import traceback
-import uuid as _uuid
+ 
 import json
 from datetime import timedelta
 
@@ -19,7 +20,7 @@ except ImportError:
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
 from gemini_connector import GeminiConnector
-from bias_mapper import map_biases, generate_bias_mapping
+from bias_mapper import generate_bias_mapping
 from visualization import visualize_fairness_dashboard
 from preprocessing import load_and_preprocess, validate_dataset
 
@@ -128,6 +129,234 @@ def get_cache_file() -> str:
         return os.path.abspath(cache_path)
     return os.path.join(get_cache_dir(), "analysis_response.json")
 
+# ------------------------
+# Small helpers for readability
+# ------------------------
+_GEMINI_COOLDOWN_UNTIL = 0.0  # epoch seconds until which we should skip Gemini calls
+
+def _parse_retry_after_seconds_from_error_text(text: str) -> int | None:
+    """Best-effort parse of retry delay seconds from Gemini error text.
+
+    Looks for patterns like:
+      - "retry_delay {\n  seconds: 19\n}"
+      - "Please retry in 8.87s"
+    Returns an integer number of seconds or None if not found.
+    """
+    if not text:
+        return None
+    # retry_delay { seconds: N }
+    m = re.search(r"retry_delay\s*\{[^}]*seconds\s*:\s*(\d+)", text, re.IGNORECASE | re.DOTALL)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            pass
+    # Please retry in Xs
+    m = re.search(r"Please\s+retry\s+in\s+([0-9]+(?:\.[0-9]+)?)s", text, re.IGNORECASE)
+    if m:
+        try:
+            secs = float(m.group(1))
+            return max(1, int(round(secs)))
+        except Exception:
+            pass
+    return None
+
+
+def _set_gemini_cooldown(seconds: int, log):
+    """Set a global cooldown until now + seconds to avoid repeated 429s."""
+    global _GEMINI_COOLDOWN_UNTIL
+    try:
+        sec = max(1, int(seconds))
+    except Exception:
+        sec = 15
+    _GEMINI_COOLDOWN_UNTIL = time.time() + sec
+    if log:
+        log(f"gemini_cooldown_set seconds={sec}")
+
+
+def get_gemini_cooldown_remaining() -> int:
+    """Return remaining cooldown in whole seconds (0 if none)."""
+    remaining = int(max(0.0, _GEMINI_COOLDOWN_UNTIL - time.time()))
+    return remaining
+
+
+def handle_gemini_error(err: Exception, log) -> str:
+    """Record cooldown for 429/rate-limit errors and return a user-friendly message.
+
+    - Parses retry-after seconds from the error text if possible.
+    - Sets a short fallback cooldown if parsing fails.
+    - Returns the original error text for transparency, prefixed to indicate rate limit where applicable.
+    """
+    msg = str(err)
+    lowered = msg.lower()
+    # Detect quota/429 errors broadly
+    if "429" in lowered or "quota" in lowered or "rate limit" in lowered or "rate-limit" in lowered:
+        secs = _parse_retry_after_seconds_from_error_text(msg)
+        if secs is None:
+            # conservative default
+            secs = 20
+        _set_gemini_cooldown(secs, log)
+        if log:
+            log(f"gemini_rate_limited retry_after={secs}s")
+        return f"Gemini temporarily rate-limited; skipping for ~{secs}s. Original error: {msg}"
+    # Non-rate-limit error: return as-is
+    return f"Gemini summary failed: {msg}"
+
+def maybe_run_gemini_summary(run_gemini: bool, gemini_key: str, bias_report, dataset_name: str, shape, excluded_columns, log):
+    """Optionally run Gemini summary and return ai_output (or None).
+
+    Mirrors the original try/except behavior and logging without changing semantics.
+    """
+    ai_output = None
+    if run_gemini and gemini_key:
+        # If we're within a cooldown window, skip hitting the API and return a helpful message.
+        remaining = get_gemini_cooldown_remaining()
+        if remaining > 0:
+            ai_output = f"Gemini temporarily rate-limited; {remaining}s remaining before retry."
+            if log:
+                log(f"gemini_skip_due_to_cooldown remaining={remaining}s")
+            return ai_output
+        try:
+            gemini = GeminiConnector(gemini_key)
+            ai_output = gemini.summarize_biases(
+                bias_report,
+                dataset_name=dataset_name,
+                shape=shape,
+                excluded_columns=excluded_columns,
+            )
+            # If the connector returned an error as plain text, detect rate limit and set cooldown
+            if isinstance(ai_output, str):
+                lower = ai_output.lower()
+                if ("429" in lower) or ("quota" in lower) or ("rate limit" in lower) or ("rate-limit" in lower):
+                    secs = _parse_retry_after_seconds_from_error_text(ai_output) or 20
+                    _set_gemini_cooldown(secs, log)
+                    if log:
+                        log(f"gemini_rate_limited (text) retry_after={secs}s")
+        except Exception as eg:
+            ai_output = handle_gemini_error(eg, log)
+            log(f"gemini_error={eg}")
+    return ai_output
+
+
+def build_plots_payload(bias_report, df: pd.DataFrame, return_plots: str, enable_plots: bool, log):
+    """Create plots payload dict depending on return_plots value.
+
+    Returns a dict or {"error": str} or None if plots disabled.
+    """
+    if not enable_plots:
+        return None
+
+    try:
+        figs = visualize_fairness_dashboard(bias_report, df)
+        plots_payload = {}
+        for i, fig in enumerate(figs, start=1):
+            key = f"fig{i}"
+            if fig is None:
+                plots_payload[key] = None
+                continue
+            if return_plots in ("json", "both"):
+                try:
+                    plots_payload[key] = {"plotly": fig.to_dict()}
+                except Exception:
+                    plots_payload[key] = {"plotly": None}
+            if return_plots in ("png", "both"):
+                try:
+                    import base64
+                    img_bytes = fig.to_image(format="png")
+                    plots_payload.setdefault(key, {})["png_base64"] = base64.b64encode(img_bytes).decode("utf-8")
+                except Exception as ep:
+                    plots_payload.setdefault(key, {})["png_base64"] = None
+                    log(f"plot_png_error key={key} err={ep}")
+        return plots_payload
+    except Exception as ev:
+        log(f"visualization_block_error={ev}")
+        return {"error": str(ev)}
+
+
+def compute_numeric_summary(df: pd.DataFrame) -> dict:
+    """Compute the numeric summary with the same shielding as before."""
+    try:
+        num_df = df.select_dtypes(include=[np.number])
+        rows, cols = df.shape
+        if num_df.shape[1] > 0:
+            means = num_df.mean(numeric_only=True)
+            medians = num_df.median(numeric_only=True)
+            variances = num_df.var(numeric_only=True)
+            stds = num_df.std(numeric_only=True)
+            numeric_summary = {
+                "rows": int(rows),
+                "columns": int(cols),
+                "mean": float(np.nanmean(means.values)) if len(means) else 0.0,
+                "median": float(np.nanmedian(medians.values)) if len(medians) else 0.0,
+                "mode": float(num_df.mode(dropna=True).iloc[0].mean()) if not num_df.mode(dropna=True).empty else 0.0,
+                "max": float(np.nanmax(num_df.max(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                "min": float(np.nanmin(num_df.min(numeric_only=True).values)) if len(num_df.columns) else 0.0,
+                "std_dev": float(np.nanmean(stds.values)) if len(stds) else 0.0,
+                "variance": float(np.nanmean(variances.values)) if len(variances) else 0.0,
+            }
+        else:
+            numeric_summary = {
+                "rows": int(rows),
+                "columns": int(cols),
+                "mean": 0.0,
+                "median": 0.0,
+                "mode": 0.0,
+                "max": 0.0,
+                "min": 0.0,
+                "std_dev": 0.0,
+                "variance": 0.0,
+            }
+    except Exception:
+        numeric_summary = {
+            "rows": int(df.shape[0]),
+            "columns": int(df.shape[1]),
+            "mean": 0.0,
+            "median": 0.0,
+            "mode": 0.0,
+            "max": 0.0,
+            "min": 0.0,
+            "std_dev": 0.0,
+            "variance": 0.0,
+        }
+    return numeric_summary
+
+
+def apply_bias_mapping_to_response(response: dict, bias_report, ai_output, reporter, log):
+    """Generate bias mapping and update the response dict in-place.
+
+    Keeps original error handling and keys unchanged.
+    """
+    try:
+        ai_text_for_mapping = ai_output if ai_output else reporter.summary()
+        mapped = generate_bias_mapping(bias_report, ai_text_for_mapping)
+        metadata = mapped.get("metadata", {})
+
+        response.update({
+            "mapped_biases": mapped.get("biases", []),
+            "overall_reliability_assessment": mapped.get("overall_reliability_assessment", ""),
+            "fairness_ethics": mapped.get("fairness_ethics", ""),
+            "concluding_summary": mapped.get("concluding_summary", ""),
+            "actionable_recommendations": mapped.get("actionable_recommendations", ""),
+            "total_biases": metadata.get("total_biases", 0),
+            "severity_summary": metadata.get("severity_summary", {}),
+        })
+    except Exception as em:
+        response["mapped_biases_error"] = str(em)
+        log(f"generate_bias_mapping_error={em}")
+
+
+def save_analysis_cache(payload: dict, log):
+    """Persist payload to the analysis cache path, preserving logging semantics."""
+    try:
+        cache_dir = get_cache_dir()
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = get_cache_file()
+        with open(cache_file, "w", encoding="utf-8") as wf:
+            json.dump(make_json_serializable(payload), wf, ensure_ascii=False, indent=2)
+        log(f"cached analysis written to {cache_file}")
+    except Exception as ew:
+        log(f"cache_write_error={ew}")
+
 @app.route("/")
 def index():
     return jsonify({"message": "D-BIAS backend running"}), 200
@@ -207,10 +436,9 @@ def analyze():
       run_gemini: 'true' to enable Gemini summary (requires GEMINI_API_KEY)
       return_plots: 'json' | 'png' | 'both' | 'none'
     """
-    req_id = str(_uuid.uuid4())[:8]
     t0 = time.time()
     def log(msg: str):
-        print(f"[analyze {req_id}] {msg}")
+        print(f"[analyze] {msg}")
 
     # Quick availability guard
     if "file" not in request.files:
@@ -245,68 +473,36 @@ def analyze():
         reporter = BiasReporter(df, bias_report)
         fairness_score = reporter.fairness_score()
 
-        ai_output = None
         gemini_key = os.getenv("GEMINI_API_KEY", "")
-        if run_gemini_flag and gemini_key:
-            try:
-                gemini = GeminiConnector(gemini_key)
-                ai_output = gemini.summarize_biases(bias_report, dataset_name=f.filename, shape=df.shape, excluded_columns=excluded_cols)
-            except Exception as eg:
-                ai_output = f"Gemini summary failed: {eg}"
-                log(f"gemini_error={eg}")
+        ai_output = maybe_run_gemini_summary(
+            run_gemini_flag,
+            gemini_key,
+            bias_report,
+            f.filename,
+            df.shape,
+            excluded_cols,
+            log,
+        )
 
-        # Plots (optional & shielded)
-        plots_payload = None
-        if enable_plots:
-            try:
-                figs = visualize_fairness_dashboard(bias_report, df)
-                plots_payload = {}
-                for i, fig in enumerate(figs, start=1):
-                    key = f"fig{i}"
-                    if fig is None:
-                        plots_payload[key] = None
-                        continue
-                    if return_plots in ("json", "both"):
-                        try:
-                            plots_payload[key] = {"plotly": fig.to_dict()}
-                        except Exception:
-                            plots_payload[key] = {"plotly": None}
-                    if return_plots in ("png", "both"):
-                        try:
-                            import base64
-                            img_bytes = fig.to_image(format="png")
-                            plots_payload.setdefault(key, {})["png_base64"] = base64.b64encode(img_bytes).decode("utf-8")
-                        except Exception as ep:
-                            plots_payload.setdefault(key, {})["png_base64"] = None
-                            log(f"plot_png_error key={key} err={ep}")
-            except Exception as ev:
-                plots_payload = {"error": str(ev)}
-                log(f"visualization_block_error={ev}")
+        plots_payload = build_plots_payload(
+            bias_report=bias_report,
+            df=df,
+            return_plots=return_plots,
+            enable_plots=enable_plots,
+            log=log,
+        )
+
+        # Always build plots for the cache (both JSON and PNG), regardless of request flag
+        cache_plots_payload = build_plots_payload(
+            bias_report=bias_report,
+            df=df,
+            return_plots="both",
+            enable_plots=True,
+            log=log,
+        )
 
         # Numeric summary
-        try:
-            num_df = df.select_dtypes(include=[np.number])
-            rows, cols = df.shape
-            if num_df.shape[1] > 0:
-                means = num_df.mean(numeric_only=True)
-                medians = num_df.median(numeric_only=True)
-                variances = num_df.var(numeric_only=True)
-                stds = num_df.std(numeric_only=True)
-                numeric_summary = {
-                    "rows": int(rows),
-                    "columns": int(cols),
-                    "mean": float(np.nanmean(means.values)) if len(means) else 0.0,
-                    "median": float(np.nanmedian(medians.values)) if len(medians) else 0.0,
-                    "mode": float(num_df.mode(dropna=True).iloc[0].mean()) if not num_df.mode(dropna=True).empty else 0.0,
-                    "max": float(np.nanmax(num_df.max(numeric_only=True).values)) if len(num_df.columns) else 0.0,
-                    "min": float(np.nanmin(num_df.min(numeric_only=True).values)) if len(num_df.columns) else 0.0,
-                    "std_dev": float(np.nanmean(stds.values)) if len(stds) else 0.0,
-                    "variance": float(np.nanmean(variances.values)) if len(variances) else 0.0,
-                }
-            else:
-                numeric_summary = {"rows": int(rows), "columns": int(cols), "mean": 0.0, "median": 0.0, "mode": 0.0, "max": 0.0, "min": 0.0, "std_dev": 0.0, "variance": 0.0}
-        except Exception:
-            numeric_summary = {"rows": int(df.shape[0]), "columns": int(df.shape[1]), "mean": 0.0, "median": 0.0, "mode": 0.0, "max": 0.0, "min": 0.0, "std_dev": 0.0, "variance": 0.0}
+        numeric_summary = compute_numeric_summary(df)
 
         response = {
             "bias_report": bias_report,
@@ -317,15 +513,13 @@ def analyze():
             "reliability": reporter.reliability(),
             "preprocessing_warnings": prep_warnings,
         }
-        try:
-            ai_text_for_mapping = ai_output if ai_output else reporter.summary()
-            # mapped = map_biases(bias_report, ai_text_for_mapping)
-            mapped = generate_bias_mapping(bias_report, ai_text_for_mapping)
-            print(mapped)
-            response["mapped_biases"] = mapped
-        except Exception as em:
-            response["mapped_biases_error"] = str(em)
-            log(f"generate_bias_mapping_error={em}")
+        apply_bias_mapping_to_response(response, bias_report, ai_output, reporter, log)
+        
+        # Persist the full analysis (including mapped_biases and plots) to cache JSON for /api/analysis/latest
+        cache_response = dict(response)
+        if cache_plots_payload is not None:
+            cache_response["plots"] = cache_plots_payload
+        save_analysis_cache(cache_response, log)
         if plots_payload is not None:
             response["plots"] = plots_payload
 
@@ -337,7 +531,6 @@ def analyze():
             "error": "internal server error",
             "detail": str(e),
             "trace": traceback.format_exc(),
-            "request_id": req_id
         }), 500
 
 
