@@ -29,14 +29,19 @@
             "@radix-ui/react-toggle": "^1.1.2",
             "@radix-ui/react-toggle-group": "^1.1.2",
             "@radix-ui/react-tooltip": "^1.1.8",
+            "@supabase/supabase-js": "^2.81.1",
             "class-variance-authority": "^0.7.1",
             "clsx": "^2.1.0",
             "cmdk": "^1.1.1",
             "embla-carousel-react": "^8.6.0",
+            "html2canvas": "^1.4.1",
             "input-otp": "^1.4.2",
+            "jspdf": "^3.0.3",
             "lucide-react": "^0.487.0",
             "next-themes": "^0.4.6",
             "papaparse": "^5.4.1",
+            "pdfmake": "^0.2.10",
+            "dom-to-image-more": "^2.9.3",
             "plotly.js-dist-min": "^2.35.3",
             "react": "^18.3.1",
             "react-day-picker": "^8.10.1",
@@ -57,7 +62,7 @@
             "@types/react-dom": "^18.3.0",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "typescript": "^5.6.3",
-            "vite": "6.3.5"
+            "vite": "^6.4.1"
       },
       "overrides": {
             "@types/react": "^18.3.0",

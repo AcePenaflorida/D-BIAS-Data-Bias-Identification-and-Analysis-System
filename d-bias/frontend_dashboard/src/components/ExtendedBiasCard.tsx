@@ -20,22 +20,73 @@ function extractSections(text: string) {
     Meaning: [],
     Harm: [],
     Impact: [],
+    'Severity Explanation': [],
     Fix: [],
   };
   if (!text) return sections;
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lines = text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\t\u00A0]/g, ' ')
+    .split(/\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
   let current: keyof typeof sections | null = null;
   for (const raw of lines) {
-    const hdr = raw.match(/^(Meaning|Harm|Impact|Fix)\s*:/i);
+    const hdr = raw.match(/^(Meaning|Harm|Impact|Severity\s*(?:Explanation|Rationale)?|Fix|Mitigation|Recommendations?)\s*:/i);
     if (hdr) {
-      current = hdr[1] as keyof typeof sections;
-      const rest = raw.replace(/^[^:]+:\s*/,'').trim();
+      const label = hdr[1].toLowerCase();
+      current = (label.startsWith('severity') ? 'Severity Explanation' : label.startsWith('mitigation') || label.startsWith('recommend') ? 'Fix' : (hdr[1] as keyof typeof sections)) as keyof typeof sections;
+      const rest = raw.replace(/^[^:]+:\s*/, '').trim();
       if (rest) sections[current].push(rest);
       continue;
     }
     if (current) sections[current].push(raw);
   }
   return sections;
+}
+
+const formatBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+function renderSection(title: string, bodyLines?: string[] | string) {
+  if (!bodyLines || (Array.isArray(bodyLines) && bodyLines.length === 0)) return null;
+  const lines = Array.isArray(bodyLines) ? bodyLines : String(bodyLines).split(/\n+/);
+  const cleaned = lines.map(l => l.trim()).filter(Boolean);
+  if (cleaned.length === 0) return null;
+  const asList = cleaned.every(l => /^[-*•]|^\d+\./.test(l) || cleaned.length > 1);
+  return (
+    <div className="space-y-1">
+      <h5 className="text-slate-800 font-medium">{title}</h5>
+      {asList ? (
+        <ul className="list-disc pl-5 space-y-1 text-slate-700">
+          {cleaned.map((l, i) => (
+            <li key={i} dangerouslySetInnerHTML={{ __html: formatBold(l.replace(/^[-*•]\s*/, '')) }} />
+          ))}
+        </ul>
+      ) : (
+        cleaned.map((l, i) => (
+          <p key={i} className="text-slate-700" dangerouslySetInnerHTML={{ __html: formatBold(l) }} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function renderMetaBullets(label: string, items: Array<{ label: string; value?: string }>) {
+  const visible = items.filter(i => (i.value ?? '').toString().trim().length > 0);
+  if (!visible.length) return null;
+  return (
+    <div className="space-y-1">
+      <h5 className="text-slate-800 font-medium">{label}</h5>
+      <ul className="list-disc pl-5 space-y-1 text-slate-700">
+        {visible.map((i, idx) => (
+          <li key={idx}>
+            <span className="font-semibold">{i.label}: </span>
+            <span dangerouslySetInnerHTML={{ __html: formatBold(String(i.value)) }} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
@@ -58,20 +109,22 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
         {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </Button>
       {open && (
-        <div className="mt-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-4 text-sm">
+        <div className="mt-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-5 text-sm">
           {hasStructured ? (
-            Object.entries(sections).map(([key, arr]) => (
-              arr.length ? (
-                <div key={key}>
-                  <h5 className="text-slate-800 font-medium mb-1">{key}</h5>
-                  <ul className="list-disc pl-5 space-y-1 text-slate-700">
-                    {arr.map((line, idx) => <li key={idx}>{line}</li>)}
-                  </ul>
-                </div>
-              ) : null
-            ))
+            <>
+              {renderMetaBullets('Details', [
+                { label: 'Feature(s)', value: bias.column },
+                { label: 'Bias Type', value: bias.bias_type },
+                { label: 'Severity', value: bias.severity },
+              ])}
+              {renderSection('Meaning', sections['Meaning'])}
+              {renderSection('Harm', sections['Harm'])}
+              {renderSection('Impact', sections['Impact'])}
+              {renderSection('Severity Explanation', sections['Severity Explanation'])}
+              {renderSection('Fix', sections['Fix'])}
+            </>
           ) : (
-            <p className="text-slate-600">{bias.ai_explanation || 'No AI explanation available.'}</p>
+            <p className="text-slate-600" dangerouslySetInnerHTML={{ __html: formatBold(bias.ai_explanation || 'No AI explanation available.') }} />
           )}
         </div>
       )}

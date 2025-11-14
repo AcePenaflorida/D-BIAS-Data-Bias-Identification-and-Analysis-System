@@ -63,9 +63,6 @@ export function UploadPage({
 
   // Close logic for preview dialog: always clear dataset selection (valid or invalid) per refined requirements
   const closePreviewDialog = useCallback(() => {
-    if (isAnalyzing && analysisController) {
-      analysisController.abort();
-    }
     setShowPreviewDialog(false);
     // Always fully reset so summary shows neutral state
     resetDatasetSelection();
@@ -178,11 +175,37 @@ export function UploadPage({
       const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
       onAnalysisComplete(result);
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
-        setError('Analysis canceled.');
+      const name = String(e?.name || '');
+      const msg = String(e?.message || '');
+      const isAbortLike = name === 'AbortError' || /aborted/i.test(msg);
+      if (isAbortLike) {
+        // If request was aborted or timed out locally, the backend job may still finish.
+        // Poll cached endpoint to sync once the analysis_response.json is written.
+        setError('Finalizing on server… syncing results');
+        try {
+          const result = await (async function pollCached(maxMs = 15 * 60 * 1000, interval = 5000) {
+            const start = Date.now();
+            let last: AnalysisResult | null = null;
+            while (Date.now() - start < maxMs) {
+              try {
+                last = await fetchLatestCachedAnalysis();
+                if (last) return last;
+              } catch {}
+              await new Promise(r => setTimeout(r, interval));
+            }
+            return last; // may be null
+          })();
+          if (result) {
+            onAnalysisComplete(result);
+            return;
+          } else {
+            setError('Analysis finished server-side but cache not found yet. Try "Load Latest Cached".');
+          }
+        } catch {
+          setError('Sync failed after cancellation. Try "Load Latest Cached".');
+        }
       } else {
-        const msg = String(e?.message || 'Analysis failed.');
-        setError(msg);
+        setError(msg || 'Analysis failed.');
       }
     } finally {
       setIsAnalyzing(false);

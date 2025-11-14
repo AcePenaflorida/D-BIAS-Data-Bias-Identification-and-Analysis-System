@@ -164,8 +164,9 @@ function mapAnalysisFromJson(data: any, datasetName: string): AnalysisResult {
     uploadDate: new Date().toISOString(),
     status: 'complete',
     dataset: {
-      rows: Number(ns?.n_rows ?? 0),
-      columns: Number(ns?.n_columns ?? 0),
+      // Support both numeric_summary.{rows,columns} and legacy {n_rows,n_columns}; prefer explicit rows/columns
+      rows: Number((ns as any)?.rows ?? (ns as any)?.n_rows ?? data?.reliability?.n_rows ?? 0),
+      columns: Number((ns as any)?.columns ?? (ns as any)?.n_columns ?? data?.reliability?.n_columns ?? 0),
       mean: Number(ns?.mean ?? 0),
       median: Number(ns?.median ?? 0),
       mode: Number(ns?.mode ?? 0),
@@ -216,7 +217,7 @@ export async function analyzeDataset(
     `${BACKEND_URL}/api/analyze`,
     { method: 'POST', body: form },
     1,
-    90000,
+    1200000,
     true,
     signal,
   );
