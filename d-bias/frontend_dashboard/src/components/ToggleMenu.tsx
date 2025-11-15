@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Logo from '../assets/logo-d-bias.svg';
-import { User, History, LogOut, Menu, X } from 'lucide-react';
+import { User, History, LogOut, Menu } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import type { AnalysisResult } from '../App';
-import { getProfile, updateProfile, deleteProfile, createProfile, Profile } from '../services/api';
+import { getProfile, updateProfile, deleteProfile, createProfile, Profile, fetchLatestCachedAnalysis, mapAnalysisFromJson } from '../services/api';
+import { listAnalysesByUser, deleteAnalysis } from '../services/db';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
 
@@ -15,13 +16,19 @@ interface ToggleMenuProps {
   onLogout?: () => void;
   onLogin?: () => void;
   isAuthenticated?: boolean;
+  onRefreshHistory?: () => Promise<void> | void;
 }
 
-export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, onLogin, isAuthenticated = false }: ToggleMenuProps) {
+export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, onLogin, isAuthenticated = false, onRefreshHistory }: ToggleMenuProps) {
   const [openHistory, setOpenHistory] = useState(false);
   const [openProfile, setOpenProfile] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null);
+  const [dbRows, setDbRows] = useState<Array<any>>([]);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [filterText, setFilterText] = useState('');
+  const [sortMode, setSortMode] = useState<'newest' | 'oldest' | 'az' | 'za'>('newest');
+  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set());
   const [profile, setProfile] = useState<Profile | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -30,6 +37,11 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<any | null>(null);
+  const pendingTimersRef = React.useRef<Record<number, any>>({});
+  const [pendingDeletes, setPendingDeletes] = useState<Record<number, any>>({});
+  const UNDO_TIMEOUT_MS = 8000;
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -57,6 +69,130 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
       try { document.documentElement.style.removeProperty('--sidebar-width'); } catch {}
     };
   }, [collapsed]);
+
+  // Fetch DB rows when History dialog opens
+  useEffect(() => {
+    if (!openHistory || !isAuthenticated) return;
+    let mounted = true;
+    setDbLoading(true);
+    (async () => {
+      try {
+        const rows = await listAnalysesByUser();
+        if (mounted) setDbRows(rows || []);
+      } catch {
+        if (mounted) setDbRows([]);
+      } finally {
+        if (mounted) setDbLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [openHistory, isAuthenticated]);
+
+  // Load pinned IDs from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('dbias_pinned');
+      if (raw) setPinnedIds(new Set(JSON.parse(raw)));
+    } catch {}
+  }, []);
+
+  const persistPins = (next: Set<number>) => {
+    setPinnedIds(next);
+    try { localStorage.setItem('dbias_pinned', JSON.stringify(Array.from(next))); } catch {}
+  };
+
+  const togglePin = (id: number) => {
+    const next = new Set(pinnedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    persistPins(next);
+  };
+
+  // compare feature removed
+
+  // old filteredRows definition removed
+  const filteredRows = dbRows
+    .filter(r => {
+      if (filterText) {
+        const txt = `${r.description || ''}`.toLowerCase();
+        if (!txt.includes(filterText.toLowerCase())) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // pinned precedence
+      const ap = pinnedIds.has(a.id) ? 1 : 0;
+      const bp = pinnedIds.has(b.id) ? 1 : 0;
+      if (ap !== bp) return bp - ap; // pinned first
+      if (sortMode === 'newest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      } else if (sortMode === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      } else if (sortMode === 'az') {
+        return String(a.description || '').localeCompare(String(b.description || ''));
+      } else if (sortMode === 'za') {
+        return String(b.description || '').localeCompare(String(a.description || ''));
+      }
+      return 0;
+    });
+
+  const performDownload = async (row: any) => {
+    try {
+      const pdfResp = await fetch(row.report_url, { cache: 'no-store' });
+      if (!pdfResp.ok) throw new Error(`PDF fetch failed (HTTP ${pdfResp.status})`);
+      const pdfBlob = await pdfResp.blob();
+      const a = document.createElement('a');
+      const base = (row.description || 'analysis').toString().replace(/[^a-z0-9-_]+/gi, '-');
+      a.href = URL.createObjectURL(pdfBlob);
+      a.download = `${base}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      toast.success('PDF downloaded');
+    } catch (e: any) {
+      toast.error('PDF download failed: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  const startDelete = (row: any) => {
+    if (!row) return;
+    // Optimistic removal
+    setDbRows(prev => prev.filter(r => r.id !== row.id));
+    setPendingDeletes(prev => ({ ...prev, [row.id]: row }));
+    // Schedule permanent delete
+    const timer = setTimeout(async () => {
+      try {
+        await deleteAnalysis(row.id, row);
+      } catch (e: any) {
+        // If permanent delete fails, restore row
+        setDbRows(prev => [...prev, row]);
+        toast.error('Failed to permanently delete item');
+      } finally {
+        setPendingDeletes(prev => { const { [row.id]: _, ...rest } = prev; return rest; });
+        delete pendingTimersRef.current[row.id];
+      }
+    }, UNDO_TIMEOUT_MS);
+    pendingTimersRef.current[row.id] = timer;
+    toast.info('History item deleted', {
+      action: {
+        label: 'Undo',
+        onClick: () => undoDelete(row.id)
+      },
+      duration: UNDO_TIMEOUT_MS
+    });
+  };
+
+  const undoDelete = (id: number) => {
+    const row = pendingDeletes[id];
+    if (!row) return;
+    // Cancel timer
+    const t = pendingTimersRef.current[id];
+    if (t) clearTimeout(t);
+    delete pendingTimersRef.current[id];
+    setPendingDeletes(prev => { const { [id]: _, ...rest } = prev; return rest; });
+    // Restore row and re-apply sort ordering by injecting then letting filteredRows compute
+    setDbRows(prev => [...prev, row]);
+    toast.success('Deletion undone');
+  };
 
   // Only render any UI if the user is authenticated
   if (!isAuthenticated) return null;
@@ -149,11 +285,60 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
         <DialogContent className="max-w-md">
           <div className="w-full relative">
             <DialogHeader className="w-full text-center">
-              <DialogTitle>Analysis History</DialogTitle>
+              <DialogTitle className="flex items-center justify-between">
+                <span className="flex-1 text-center">Analysis History</span>
+                <div className="absolute right-0 top-0 mt-1 mr-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await onRefreshHistory?.();
+                        toast.success('History refreshed');
+                      } catch (e: any) {
+                        toast.error('Failed to refresh history');
+                      }
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+              </DialogTitle>
             </DialogHeader>
             {/* Close button intentionally removed per request */}
 
             <div className="space-y-3 max-h-96 overflow-y-auto mt-3">
+              {/* Filter & Sort controls */}
+              <div className="space-y-2 px-1">
+                <Input
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  placeholder="Search description..."
+                  className="bg-white"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as any)}
+                    className="bg-white text-sm border rounded-md px-2 py-1"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="az">A–Z</option>
+                    <option value="za">Z–A</option>
+                  </select>
+                  {filterText && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setFilterText(''); }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {dbLoading && <p className="text-xs text-slate-500 px-2">Loading...</p>}
               {!isAuthenticated ? (
                 <div className="p-6 text-center">
                   <p className="text-slate-700 mb-3">Please log in to view your analysis history.</p>
@@ -169,37 +354,73 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
                     </button>
                   </div>
                 </div>
-              ) : userHistory.length === 0 ? (
-                <p className="text-slate-500 text-center py-8">No analysis history yet</p>
+              ) : filteredRows.length === 0 ? (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-slate-500">No analysis history yet</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const latest = await fetchLatestCachedAnalysis();
+                        if (!latest) {
+                          toast.error('No cached analysis found');
+                          return;
+                        }
+                        setSelectedHistory(latest);
+                        setShowPreviewDialog(true);
+                      } catch {
+                        toast.error('Failed to load cached analysis');
+                      }
+                    }}
+                  >
+                    Load Latest Cached
+                  </Button>
+                </div>
               ) : (
-                userHistory.map((result) => (
+                filteredRows.map((row) => (
                   <div
-                    key={result.id}
+                    key={row.id}
                     className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <h4 className="text-slate-900">{result.datasetName}</h4>
+                        <h4 className="text-slate-900">{row.description || 'analysis'}</h4>
                         <p className="text-sm text-slate-500">
-                          {new Date(result.uploadDate).toLocaleDateString()} at{' '}
-                          {new Date(result.uploadDate).toLocaleTimeString()}
+                          {new Date(row.created_at).toLocaleDateString()} at{' '}
+                          {new Date(row.created_at).toLocaleTimeString()}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <span
-                          className={`text-xs px-2 py-1 rounded-full ${
-                            result.status === 'complete' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {result.status}
-                        </span>
-                        <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">saved</span>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <Button
+                            variant={pinnedIds.has(row.id) ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => togglePin(row.id)}
+                            title={pinnedIds.has(row.id) ? 'Unpin' : 'Pin'}
+                          >
+                            {pinnedIds.has(row.id) ? 'Pinned' : 'Pin'}
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              setSelectedHistory(result);
-                              setShowPreviewDialog(true);
+                              (async () => {
+                                try {
+                                  const href: string = row.analysis_json_url;
+                                  const res = await fetch(href, { cache: 'no-store' });
+                                  const txt = await res.text();
+                                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                  let data: any;
+                                  try { data = JSON.parse(txt); } catch { throw new Error('Invalid JSON'); }
+                                  const mapped = mapAnalysisFromJson(data, String(row.description || 'analysis.csv'));
+                                  setSelectedHistory(mapped);
+                                  setShowPreviewDialog(true);
+                                } catch {
+                                  toast.error('Failed to load analysis JSON (preview)');
+                                }
+                              })();
                             }}
                           >
                             Preview
@@ -207,22 +428,45 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
                           <Button
                             size="sm"
                             onClick={() => {
-                              onViewHistory?.(result);
-                              setOpenHistory(false);
+                              (async () => {
+                                try {
+                                  const href: string = row.analysis_json_url;
+                                  const res = await fetch(href, { cache: 'no-store' });
+                                  const txt = await res.text();
+                                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                  let data: any;
+                                  try { data = JSON.parse(txt); } catch { throw new Error('Invalid JSON'); }
+                                  const mapped = mapAnalysisFromJson(data, String(row.description || 'analysis.csv'));
+                                  onViewHistory?.(mapped);
+                                  setOpenHistory(false);
+                                } catch {
+                                  toast.error('Failed to open analysis (JSON)');
+                                }
+                              })();
                             }}
                           >
                             Open
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => performDownload(row)}
+                          >
+                            Download PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => { setConfirmDeleteId(row.id); setConfirmDeleteRow(row); }}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-4 text-sm mt-2">
-                      <span className="text-slate-600">
-                        Fairness: <span className="text-slate-900">{result.fairnessScore}/100</span>
-                      </span>
-                      <span className="text-slate-600">
-                        Risk: <span className="text-slate-900">{result.biasRisk}</span>
-                      </span>
+                    <div className="flex gap-3 text-xs mt-2 text-slate-600">
+                      <a className="underline" href={row.analysis_json_url} target="_blank" rel="noreferrer">JSON</a>
+                      <a className="underline" href={row.report_url} target="_blank" rel="noreferrer">PDF</a>
                     </div>
                   </div>
                 ))
@@ -389,6 +633,30 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
           result={selectedHistory}
         />
       )}
+      {/* Delete confirmation dialog */}
+      <Dialog open={confirmDeleteId !== null} onOpenChange={(v) => { if (!v) { setConfirmDeleteId(null); setConfirmDeleteRow(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete History Item</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-700">Are you sure you want to delete this history item?</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmDeleteId(null); setConfirmDeleteRow(null); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirmDeleteRow) startDelete(confirmDeleteRow);
+                setConfirmDeleteId(null);
+                setConfirmDeleteRow(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* CompareDialog removed */}
     </aside>
   );
 }
