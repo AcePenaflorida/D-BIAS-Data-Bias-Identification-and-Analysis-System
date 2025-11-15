@@ -11,6 +11,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import type { AnalysisResult } from '../App';
+import { signIn, signUp as supaSignUp } from '../services/auth';
 
 interface AuthActionsProps {
   onLogin: () => void;
@@ -28,15 +29,33 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
   const [showSignPassword, setShowSignPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signUpError, setSignUpError] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin();
-    setShowLoginDialog(false);
+    setLoginError(null);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const form = e.target as HTMLFormElement;
+      const formData = new FormData(form);
+      const email = String(formData.get('email') || '');
+      const password = String(formData.get('password') || '');
+      await signIn(email, password);
+      try { if (remember) localStorage.setItem('d-bias-remember', '1'); else localStorage.removeItem('d-bias-remember'); } catch {}
+      onLogin();
+      setShowLoginDialog(false);
+    } catch (err: any) {
+      setLoginError(err?.message || 'Login failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
     const payload = {
@@ -56,8 +75,17 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
       return;
     }
     setSignUpError(null);
-    onSignUp?.(payload);
-    setShowSignUpDialog(false);
+    setBusy(true);
+    try {
+      await supaSignUp(payload);
+      onSignUp?.(payload);
+      setShowSignUpDialog(false);
+      setShowLoginDialog(true);
+    } catch (err: any) {
+      setSignUpError(err?.message || 'Sign up failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -112,10 +140,12 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
               </div>
 
               <div>
-                <Button type="submit" className="w-full" size="lg">
-                  Sign in
+                <Button type="submit" className="w-full" size="lg" disabled={busy}>
+                  {busy ? 'Signing in…' : 'Sign in'}
                 </Button>
               </div>
+
+              {loginError && <div className="text-sm text-red-600 text-center">{loginError}</div>}
 
               <div className="text-center text-sm text-slate-600">
                 New here? <button type="button" className="text-primary font-medium ml-1" onClick={() => { setShowLoginDialog(false); setShowSignUpDialog(true); }}>Create account</button>
@@ -163,7 +193,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
 
               <div className="flex items-center justify-end gap-3 mt-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setShowSignUpDialog(false)}>Cancel</Button>
-                <Button type="submit" size="sm" disabled={!!signUpError}>Create account</Button>
+                <Button type="submit" size="sm" disabled={!!signUpError || busy}>{busy ? 'Creating…' : 'Create account'}</Button>
               </div>
             </form>
           </div>

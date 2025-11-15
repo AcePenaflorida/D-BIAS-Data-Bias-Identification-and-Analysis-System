@@ -8,7 +8,8 @@ import { Header } from './Header';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
-import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo } from '../services/api';
+import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo, cancelAnalysis } from '../services/api';
+import { toast } from 'sonner';
 
 interface UploadPageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
@@ -41,6 +42,26 @@ export function UploadPage({
   const [analysisController, setAnalysisController] = useState<AbortController | null>(null);
   const [isLoadingCached, setIsLoadingCached] = useState(false);
   const [hasCached, setHasCached] = useState<boolean | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // Cancel analysis and notify backend
+  const handleCancelAnalyze = async () => {
+    if (analysisController) {
+      analysisController.abort(); // abort frontend request
+    }
+    setIsCancelling(true);
+    try {
+      const resp = await cancelAnalysis();
+      toast.message(resp.status === 'Canceled' ? 'Analysis canceled.' : 'No active job to cancel.');
+      setError(resp.status === 'Canceled' ? 'Analysis canceled.' : 'No active job to cancel.');
+    } catch (e: any) {
+      toast.error('Failed to cancel analysis.');
+      setError('Failed to cancel analysis.');
+    } finally {
+      setIsCancelling(false);
+      setIsAnalyzing(false);
+      setAnalysisController(null);
+    }
+  };
 
   // Probe cached availability once on mount
   useEffect(() => {
@@ -166,46 +187,27 @@ export function UploadPage({
       return;
     }
 
+    toast.message('Analyzing dataset…');
     setIsAnalyzing(true);
     setError('');
     const controller = new AbortController();
     setAnalysisController(controller);
 
     try {
-      const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
+      // Request both JSON and PNG plot data so previews and PDFs can embed images
+      const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'both' }, controller.signal);
+      toast.message('Analysis complete. Preparing to save…');
       onAnalysisComplete(result);
     } catch (e: any) {
       const name = String(e?.name || '');
       const msg = String(e?.message || '');
       const isAbortLike = name === 'AbortError' || /aborted/i.test(msg);
       if (isAbortLike) {
-        // If request was aborted or timed out locally, the backend job may still finish.
-        // Poll cached endpoint to sync once the analysis_response.json is written.
-        setError('Finalizing on server… syncing results');
-        try {
-          const result = await (async function pollCached(maxMs = 15 * 60 * 1000, interval = 5000) {
-            const start = Date.now();
-            let last: AnalysisResult | null = null;
-            while (Date.now() - start < maxMs) {
-              try {
-                last = await fetchLatestCachedAnalysis();
-                if (last) return last;
-              } catch {}
-              await new Promise(r => setTimeout(r, interval));
-            }
-            return last; // may be null
-          })();
-          if (result) {
-            onAnalysisComplete(result);
-            return;
-          } else {
-            setError('Analysis finished server-side but cache not found yet. Try "Load Latest Cached".');
-          }
-        } catch {
-          setError('Sync failed after cancellation. Try "Load Latest Cached".');
-        }
+        setError('Analysis canceled.');
+        toast.message('Analysis canceled.');
       } else {
         setError(msg || 'Analysis failed.');
+        toast.error('Analysis failed: ' + (msg || 'Unknown error'));
       }
     } finally {
       setIsAnalyzing(false);
@@ -284,7 +286,7 @@ export function UploadPage({
 
       {/* Sidebar is rendered by App (layout flow) */}
 
-  <main className="flex-1 container mx-auto px-4 py-12">
+      <main className="flex-1 container mx-auto px-4 py-12">
         <div className="flex gap-8">
 
           {/* Main content (uploader + preview) centered */}
@@ -528,9 +530,10 @@ export function UploadPage({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                onClick={closePreviewDialog}
+                onClick={isAnalyzing ? handleCancelAnalyze : closePreviewDialog}
+                disabled={isCancelling}
               >
-                {isAnalyzing ? 'Cancel' : 'Close'}
+                {isAnalyzing ? (isCancelling ? 'Cancelling…' : 'Cancel') : 'Close'}
               </Button>
               {uploadInfo && !uploadInfoError && (
                 <Button
