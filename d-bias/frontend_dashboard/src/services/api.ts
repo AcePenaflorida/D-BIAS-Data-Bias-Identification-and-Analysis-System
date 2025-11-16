@@ -1,7 +1,18 @@
+// Cancel the current analysis job on the backend
+export async function cancelAnalysis(): Promise<{ status: string; cleanup_error?: string }> {
+  const res = await fetch(
+    `${BACKEND_URL}/api/cancel-analysis`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
+  );
+  const data = await res.json();
+  return data;
+}
 // Frontend service to call backend analyze API with retry and response mapping
 import type { AnalysisResult } from '../App';
 
 const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
+const SUPABASE_BUCKET_ANALYSIS_JSON = (import.meta as any).env?.VITE_SUPABASE_BUCKET_ANALYSIS_JSON || 'analysis_json';
+const SUPABASE_BUCKET_PDF_BIAS_REPORTS = (import.meta as any).env?.VITE_SUPABASE_BUCKET_PDF_BIAS_REPORTS || 'pdf_bias_reports';
 
 async function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -111,7 +122,28 @@ function sanitizeAiExplanation(text: string, fallback?: string): string {
 }
 
 // Canonical mapper: derive AnalysisResult strictly from analysis_response.json keys
-function mapAnalysisFromJson(data: any, datasetName: string): AnalysisResult {
+export function mapAnalysisFromJson(data: any, datasetName: string): AnalysisResult {
+  // If the stored JSON is already an AnalysisResult shape, normalize and return it directly
+  if (data && typeof data === 'object' && ('fairnessScore' in data || 'detectedBiases' in data)) {
+    const ar = data as Partial<AnalysisResult> as AnalysisResult;
+    ar.datasetName = (ar.datasetName || datasetName || 'dataset.csv').toString();
+    ar.uploadDate = ar.uploadDate || new Date().toISOString();
+    ar.status = (ar.status as any) || 'complete';
+    ar.dataset = ar.dataset || {
+      rows: Number((data as any)?.dataset?.rows ?? 0),
+      columns: Number((data as any)?.dataset?.columns ?? 0),
+      mean: Number((data as any)?.dataset?.mean ?? 0),
+      median: Number((data as any)?.dataset?.median ?? 0),
+      mode: Number((data as any)?.dataset?.mode ?? 0),
+      max: Number((data as any)?.dataset?.max ?? 0),
+      min: Number((data as any)?.dataset?.min ?? 0),
+      stdDev: Number((data as any)?.dataset?.stdDev ?? 0),
+      variance: Number((data as any)?.dataset?.variance ?? 0),
+    };
+    ar.assessment = ar.assessment || { fairness: '', recommendations: [], conclusion: '' };
+    ar.detectedBiases = Array.isArray(ar.detectedBiases) ? ar.detectedBiases : [];
+    return ar;
+  }
   const fairnessScore = Number(data?.fairness_score ?? 0);
   const fairnessLabel = toLabel(fairnessScore);
   const biasRisk = toRisk(fairnessScore);
@@ -164,8 +196,9 @@ function mapAnalysisFromJson(data: any, datasetName: string): AnalysisResult {
     uploadDate: new Date().toISOString(),
     status: 'complete',
     dataset: {
-      rows: Number(ns?.n_rows ?? 0),
-      columns: Number(ns?.n_columns ?? 0),
+      // Support both numeric_summary.{rows,columns} and legacy {n_rows,n_columns}; prefer explicit rows/columns
+      rows: Number((ns as any)?.rows ?? (ns as any)?.n_rows ?? data?.reliability?.n_rows ?? 0),
+      columns: Number((ns as any)?.columns ?? (ns as any)?.n_columns ?? data?.reliability?.n_columns ?? 0),
       mean: Number(ns?.mean ?? 0),
       median: Number(ns?.median ?? 0),
       mode: Number(ns?.mode ?? 0),
@@ -216,7 +249,7 @@ export async function analyzeDataset(
     `${BACKEND_URL}/api/analyze`,
     { method: 'POST', body: form },
     1,
-    90000,
+    1200000,
     true,
     signal,
   );

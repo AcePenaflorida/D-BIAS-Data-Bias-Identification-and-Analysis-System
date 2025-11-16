@@ -13,3 +13,6 @@ reportlab
 Pillow
 flask-cors
 requests
+playwright
+redis
+rq

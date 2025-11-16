@@ -149,7 +149,7 @@
                 "bdata": "Hh4e"
               },
               "sizemode": "area",
-              "sizeref": 0.075,
+              "sizeref": 0.05,
               "symbol": "circle"
             },
             "mode": "markers",

@@ -19,81 +19,85 @@ interface BiasCardProps {
 export function BiasCard({ bias }: BiasCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const parseAiExplanation = (text: string) => {
-    if (!text) return { headers: [] as string[], paragraphs: [] as string[], bullets: [] as Array<{ text: string; order?: number; level: number }> };
-    const normalized = text
-      .replace(/\r\n?/g, "\n")
+  const formatBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  type SectionKey = 'Meaning' | 'Harm' | 'Impact' | 'Severity Explanation' | 'Fix';
+
+  const extractStructuredSections = (text: string): Partial<Record<SectionKey, string>> => {
+    const src = String(text || '')
+      .replace(/\r\n?/g, '\n')
       .replace(/[\t\u00A0]/g, ' ')
-      .replace(/\n{2,}/g, "\n\n")
-      // Convert inline star separators like "... values. * Fix:" into a true bullet line
-      .replace(/\s\*\s+(?=\S)/g, "\n* ");
-    const rawLines = normalized.split(/\n/);
+      .replace(/\n{3,}/g, '\n\n');
 
-    const bullets: Array<{ text: string; order?: number; level: number }> = [];
-    const paragraphs: string[] = [];
-    const headers: string[] = [];
-  const mdHeaderRe = /^\s*#{2,6}\s+(.*)$/;
-    const orderedRe = /^(\s*)(\d+)[\.)]\s+(.*)$/;
-    const unorderedRe = /^(\s*)(?:\*+|[-•])\s+(.*)$/;
-    const labelBulletRe = /^(\s*)(?:<strong>[^<]+<\/strong>|[A-Za-z][^:]{2,50}):\s*(.*)$/;
+    const labelMap: Array<{ key: SectionKey; re: RegExp }> = [
+      { key: 'Meaning', re: /(^|\n)\s*(Meaning|What\s+it\s+means)\s*:\s*/i },
+      { key: 'Harm', re: /(^|\n)\s*(Harm|Risks|Downsides)\s*:\s*/i },
+      { key: 'Impact', re: /(^|\n)\s*(Impact|Effect|Implications)\s*:\s*/i },
+      { key: 'Severity Explanation', re: /(^|\n)\s*(Severity\s*(Explanation|Rationale)?|Why\s+this\s+severity)\s*:\s*/i },
+      { key: 'Fix', re: /(^|\n)\s*(Fix|Mitigation|Remediation|Recommendations?)\s*:\s*/i },
+    ];
 
-    let lastWasHeaderOrColon = false;
-    for (let raw of rawLines) {
-      const trimmed = raw.trim();
-      if (!trimmed) { lastWasHeaderOrColon = false; continue; }
-      // Drop horizontal rules or stray dashes
-      if (/^[-–—]{3,}$/.test(trimmed)) { lastWasHeaderOrColon = false; continue; }
-      // Skip noisy lines like "Detection: ..." or "Detected: ..."
-      if (/^(?:Detection|Detected)\s*:/i.test(trimmed)) { lastWasHeaderOrColon = false; continue; }
-      const hdr = raw.match(mdHeaderRe);
-      if (hdr) {
-        const title = hdr[1].trim()
-          // Remove leading numbering like "1." or "2)"
-          .replace(/^\d+[\.)]?\s*/, '')
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*\*/g, '');
-        headers.push(title);
-        lastWasHeaderOrColon = true;
-        continue;
-      }
-      const om = raw.match(orderedRe);
-      if (om) {
-        const indent = om[1] || '';
-        const level = Math.min(3, Math.floor(indent.length / 2));
-        const num = parseInt(om[2], 10);
-        let content = om[3].trim()
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*\*/g, '');
-        bullets.push({ text: `${num}. ${content}`, order: num, level });
-        lastWasHeaderOrColon = /:\s*$/.test(content);
-        continue;
-      }
-      const um = raw.match(unorderedRe);
-      if (um) {
-        const indent = um[1] || '';
-        const level = Math.min(3, Math.floor(indent.length / 2));
-        let content = um[2].trim()
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*\*/g, '');
-        bullets.push({ text: content, level });
-        lastWasHeaderOrColon = /:\s*$/.test(content);
-        continue;
-      }
-      let transformed = trimmed
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*\*/g, '');
-      const lbm = transformed.match(labelBulletRe);
-      if (lbm) {
-        const indent = lbm[1] || '';
-        const lvl = Math.min(3, Math.floor(indent.length / 2)) + (lastWasHeaderOrColon ? 1 : 0);
-        bullets.push({ text: transformed, level: Math.max(lvl, 1) });
-        lastWasHeaderOrColon = /:\s*$/.test(transformed);
-        continue;
-      }
-      paragraphs.push(transformed);
-      lastWasHeaderOrColon = /:\s*$/.test(transformed);
+    // Find all labeled section positions
+    const matches: Array<{ key: SectionKey; index: number; len: number }> = [];
+    for (const { key, re } of labelMap) {
+      const m = re.exec(src);
+      if (m) matches.push({ key, index: m.index + (m[1]?.length || 0), len: m[0].length - (m[1]?.length || 0) });
     }
-    return { headers, paragraphs, bullets };
+    matches.sort((a, b) => a.index - b.index);
+    const out: Partial<Record<SectionKey, string>> = {};
+    if (!matches.length) return out;
+    for (let i = 0; i < matches.length; i++) {
+      const cur = matches[i];
+      const start = cur.index + cur.len;
+      const end = i + 1 < matches.length ? matches[i + 1].index : src.length;
+      const chunk = src.slice(start, end).trim();
+      if (chunk) out[cur.key] = chunk;
+    }
+    return out;
+  };
+
+  const renderSection = (title: string, body?: string) => {
+    if (!body) return null;
+    const lines = body.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const asList = lines.every(l => /^[-*•]|^\d+\./.test(l));
+    if (asList) {
+      return (
+        <div className="space-y-1">
+          <div className="text-slate-800 text-sm font-semibold">{title}</div>
+          <ul className="list-disc pl-5 text-slate-700 text-sm space-y-1">
+            {lines.map((l, i) => (
+              <li key={i} dangerouslySetInnerHTML={{ __html: formatBold(l.replace(/^[-*•]\s*/, '')) }} />
+            ))}
+          </ul>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1">
+        <div className="text-slate-800 text-sm font-semibold">{title}</div>
+        {lines.map((l, i) => (
+          <p key={i} className="text-slate-700 text-sm" dangerouslySetInnerHTML={{ __html: formatBold(l) }} />
+        ))}
+      </div>
+    );
+  };
+
+  const renderMetaBullets = (items: Array<{ label: string; value?: string }>) => {
+    const visible = items.filter(i => (i.value ?? '').toString().trim().length > 0);
+    if (!visible.length) return null;
+    return (
+      <div className="space-y-1">
+        <div className="text-slate-800 text-sm font-semibold">Details</div>
+        <ul className="list-disc pl-5 text-slate-700 text-sm space-y-1">
+          {visible.map((i, idx) => (
+            <li key={idx}>
+              <span className="font-semibold">{i.label}: </span>
+              <span dangerouslySetInnerHTML={{ __html: formatBold(String(i.value)) }} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
   };
 
   const getSeverityColor = (severity: string) => {
@@ -115,31 +119,32 @@ export function BiasCard({ bias }: BiasCardProps) {
     <Card className="p-5">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="flex items-start gap-2 flex-1">
-          <h4 className="text-slate-900">{bias.bias_type}</h4>
+          <h4 className="text-slate-900 font-semibold tracking-tight">{bias.bias_type}</h4>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className="text-slate-400 hover:text-slate-600 transition-colors">
+                <button aria-label="Bias definition" className="text-slate-400 hover:text-slate-600 transition-colors">
                   <Info className="w-4 h-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-sm">
-                <p className="text-sm">{bias.definition}</p>
+                <p className="text-xs text-slate-600 mb-1">What does this bias mean?</p>
+                <p className="text-sm text-slate-800">{bias.definition}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs border ${getSeverityColor(bias.severity)}`}>
+        <span className={`px-3 py-1 rounded-full text-xs ring-1 ${getSeverityColor(bias.severity)}`}>
           {bias.severity}
         </span>
       </div>
 
       <div className="space-y-2 mb-3">
-        <div>
-          <span className="text-slate-500 text-sm">Column: </span>
-          <span className="text-slate-900 text-sm">{bias.column}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-500 text-sm">Column</span>
+          <span className="px-2.5 py-0.5 rounded-full ring-1 ring-slate-200 bg-white text-slate-700 text-xs font-mono">{bias.column}</span>
         </div>
-        <p className="text-slate-700 text-sm">{bias.description}</p>
+        <p className="text-slate-700 text-sm leading-relaxed">{bias.description}</p>
       </div>
 
       <Button
@@ -157,43 +162,25 @@ export function BiasCard({ bias }: BiasCardProps) {
       </Button>
 
       {isExpanded && (
-        <div className="mt-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+        <div className="mt-3 p-4 bg-slate-50/80 rounded-xl ring-1 ring-slate-200 space-y-3">
           {(() => {
-            const { headers, paragraphs, bullets } = parseAiExplanation(bias.ai_explanation || '');
+            const sections = extractStructuredSections(bias.ai_explanation || '');
             return (
-              <div className="space-y-3">
-                {headers.length > 0 && (
-                  <div className="space-y-1">
-                    {headers.map((h, idx) => (
-                      <div key={idx} className="text-slate-800 text-sm font-semibold" dangerouslySetInnerHTML={{ __html: h }} />
-                    ))}
-                  </div>
-                )}
-                {paragraphs.length > 0 && (
-                  <div className="space-y-2">
-                    {paragraphs.map((p, idx) => (
-                      <p key={idx} className="text-slate-700 text-sm leading-relaxed">{p}</p>
-                    ))}
-                  </div>
-                )}
-                {bullets.length > 0 && (
-                  <ul className="text-slate-700 text-sm space-y-1">
-                    {bullets.map((b: { text: string; order?: number; level: number }, idx: number) => {
-                      const ml = (b.level || 0) * 16;
-                      const isOrdered = typeof b.order === 'number';
-                      return (
-                        <li
-                          key={idx}
-                          className={isOrdered ? 'list-none font-medium' : 'list-disc'}
-                          style={{ marginLeft: ml }}
-                          dangerouslySetInnerHTML={{ __html: b.text }}
-                        />
-                      );
-                    })}
-                  </ul>
-                )}
-                {paragraphs.length === 0 && bullets.length === 0 && (
-                  <p className="text-slate-500 text-sm">No AI explanation available.</p>
+              <div className="space-y-4">
+                {/* Meta bullets */}
+                {renderMetaBullets([
+                  { label: 'Feature(s)', value: bias.column },
+                  { label: 'Bias Type', value: bias.bias_type },
+                  { label: 'Severity', value: bias.severity },
+                ])}
+                {/* Content sections from AI */}
+                {renderSection('Meaning', sections['Meaning'])}
+                {renderSection('Harm', sections['Harm'])}
+                {renderSection('Impact', sections['Impact'])}
+                {renderSection('Severity Explanation', sections['Severity Explanation'])}
+                {renderSection('Fix', sections['Fix'])}
+                {!sections['Meaning'] && !sections['Harm'] && !sections['Impact'] && !sections['Severity Explanation'] && !sections['Fix'] && (
+                  <p className="text-slate-500 text-sm">No structured details available.</p>
                 )}
               </div>
             );

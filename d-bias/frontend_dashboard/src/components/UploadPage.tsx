@@ -8,7 +8,8 @@ import { Header } from './Header';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
-import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo } from '../services/api';
+import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo, cancelAnalysis } from '../services/api';
+import { toast } from 'sonner';
 
 interface UploadPageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
@@ -42,6 +43,26 @@ export function UploadPage({
   const [analysisController, setAnalysisController] = useState<AbortController | null>(null);
   const [isLoadingCached, setIsLoadingCached] = useState(false);
   const [hasCached, setHasCached] = useState<boolean | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // Cancel analysis and notify backend
+  const handleCancelAnalyze = async () => {
+    if (analysisController) {
+      analysisController.abort(); // abort frontend request
+    }
+    setIsCancelling(true);
+    try {
+      const resp = await cancelAnalysis();
+      toast.message(resp.status === 'Canceled' ? 'Analysis canceled.' : 'No active job to cancel.');
+      setError(resp.status === 'Canceled' ? 'Analysis canceled.' : 'No active job to cancel.');
+    } catch (e: any) {
+      toast.error('Failed to cancel analysis.');
+      setError('Failed to cancel analysis.');
+    } finally {
+      setIsCancelling(false);
+      setIsAnalyzing(false);
+      setAnalysisController(null);
+    }
+  };
 
   // Probe cached availability once on mount
   useEffect(() => {
@@ -64,9 +85,6 @@ export function UploadPage({
 
   // Close logic for preview dialog: always clear dataset selection (valid or invalid) per refined requirements
   const closePreviewDialog = useCallback(() => {
-    if (isAnalyzing && analysisController) {
-      analysisController.abort();
-    }
     setShowPreviewDialog(false);
     // Always fully reset so summary shows neutral state
     resetDatasetSelection();
@@ -170,20 +188,27 @@ export function UploadPage({
       return;
     }
 
+    toast.message('Analyzing dataset…');
     setIsAnalyzing(true);
     setError('');
     const controller = new AbortController();
     setAnalysisController(controller);
 
     try {
-      const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'json' }, controller.signal);
+      // Request both JSON and PNG plot data so previews and PDFs can embed images
+      const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'both' }, controller.signal);
+      // Suppress any post-analysis toasts
       onAnalysisComplete(result);
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
+      const name = String(e?.name || '');
+      const msg = String(e?.message || '');
+      const isAbortLike = name === 'AbortError' || /aborted/i.test(msg);
+      if (isAbortLike) {
         setError('Analysis canceled.');
+        // Suppress cancel toast
       } else {
-        const msg = String(e?.message || 'Analysis failed.');
-        setError(msg);
+        setError(msg || 'Analysis failed.');
+        // Suppress error toast
       }
     } finally {
       setIsAnalyzing(false);
@@ -280,7 +305,7 @@ export function UploadPage({
 
       {/* Sidebar is rendered by App (layout flow) */}
 
-  <main className="flex-1 container mx-auto px-4 py-12">
+      <main className="flex-1 container mx-auto px-4 py-12">
         <div className="flex gap-8">
 
           {/* Main content (uploader + preview) centered */}
@@ -597,9 +622,10 @@ export function UploadPage({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                onClick={closePreviewDialog}
+                onClick={isAnalyzing ? handleCancelAnalyze : closePreviewDialog}
+                disabled={isCancelling}
               >
-                {isAnalyzing ? 'Cancel' : 'Close'}
+                {isAnalyzing ? (isCancelling ? 'Cancelling…' : 'Cancel') : 'Close'}
               </Button>
               {uploadInfo && !uploadInfoError && (
                 <Button

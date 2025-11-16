@@ -10,6 +10,7 @@ import traceback
 import threading
 import random
 import hashlib
+import io
  
 import json
 from datetime import timedelta
@@ -22,7 +23,7 @@ except ImportError:
 
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
-from gemini_connector import GeminiConnector
+from gemini_connector import GeminiConnector, GeminiKeyManager
 from bias_mapper import generate_bias_mapping
 from visualization import visualize_fairness_dashboard
 from preprocessing import load_and_preprocess, validate_dataset
@@ -447,9 +448,70 @@ def save_analysis_cache(payload: dict, log):
     except Exception as ew:
         log(f"cache_write_error={ew}")
 
+@app.route("/api/render_pdf", methods=["POST"])
+def render_pdf_from_html():
+    """Render posted HTML to a PDF using Playwright (Chromium) and return bytes.
+
+    Accepts either:
+      - multipart/form-data with field 'html' containing the HTML string
+      - application/json body {"html": "..."}
+
+    Returns: application/pdf bytes.
+    """
+    html = None
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            data = request.get_json(silent=True) or {}
+            html = data.get("html")
+        else:
+            # form-data: treat 'html' as text field or file
+            if "html" in request.form:
+                html = request.form.get("html")
+            elif "html" in request.files:
+                f = request.files["html"]
+                html = f.read().decode("utf-8", errors="replace")
+    except Exception:
+        html = None
+
+    if not html or not isinstance(html, str) or len(html) < 16:
+        return jsonify({"error": "missing_or_invalid_html"}), 400
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        return jsonify({"error": f"playwright_unavailable: {e}"}), 500
+
+    try:
+        # Ensure relative asset links resolve by injecting a <base> tag
+        base_url = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").rstrip("/") + "/"
+        if "<head" in html.lower():
+            # insert <base> right after <head>
+            try:
+                html = re.sub(r"(<head[^>]*>)", r"\1<base href=\"%s\"/>" % base_url, html, count=1, flags=re.IGNORECASE)
+            except Exception:
+                pass
+        else:
+            html = f"<head><base href=\"{base_url}\"/></head>" + html
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            page.set_content(html, wait_until="networkidle")
+            pdf_bytes = page.pdf(format="A4", print_background=True, prefer_css_page_size=True)
+            context.close()
+            browser.close()
+    except Exception as e:
+        return jsonify({"error": f"render_failed: {e}"}), 500
+
+    resp = make_response(pdf_bytes)
+    resp.headers.set("Content-Type", "application/pdf")
+    resp.headers.set("Content-Disposition", "inline; filename=report.pdf")
+    return resp
+
 @app.route("/")
 def index():
-    return jsonify({"message": "D-BIAS backend running"}), 200
+    return jsonify({"message": "D-BIAS backend running"}), 200  
 
 
 @app.route("/api/analysis/latest", methods=["GET"])
@@ -471,6 +533,43 @@ def latest_analysis():
         return jsonify({"error": f"failed to read cached analysis: {e}"}), 500
 
     return jsonify(make_json_serializable(data)), 200
+
+@app.route("/api/save_pdf", methods=["POST"])
+def save_pdf_to_cache():
+    """Accept a PDF file and save it to the program_generated_files directory.
+
+    Form-data:
+      file: PDF file (required)
+      filename: optional filename to use; defaults to a timestamped pattern
+
+    Returns JSON with {"path": <absolute_path>, "filename": <name>} on success.
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "no file part"}), 400
+        f = request.files["file"]
+        if not f or f.filename == "":
+            return jsonify({"error": "no selected file"}), 400
+
+        # Sanitize/derive filename
+        req_name = request.form.get("filename", "").strip()
+        base_name = re.sub(r"[^A-Za-z0-9_.-]", "_", req_name) if req_name else "dbias_report.pdf"
+        # Ensure .pdf extension
+        if not base_name.lower().endswith(".pdf"):
+            base_name = f"{base_name}.pdf"
+
+        # If default name, add timestamp to avoid clashes
+        if base_name == "dbias_report.pdf":
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            base_name = f"dbias_report_{ts}.pdf"
+
+        out_dir = get_cache_dir()
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, base_name)
+        f.save(out_path)
+        return jsonify({"path": out_path, "filename": base_name}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
@@ -563,16 +662,20 @@ def analyze():
         reporter = BiasReporter(df, bias_report)
         fairness_score = reporter.fairness_score()
 
-        gemini_key = os.getenv("GEMINI_API_KEY", "")
-        ai_output = maybe_run_gemini_summary(
-            run_gemini_flag,
-            gemini_key,
-            bias_report,
-            f.filename,
-            df.shape,
-            excluded_cols,
-            log,
-        )
+
+        # Use GeminiKeyManager and GeminiConnector for multi-key rotation
+        ai_output = None
+        if run_gemini_flag:
+            key_manager = GeminiKeyManager(log=log)
+            gemini_connector = GeminiConnector(key_manager=key_manager, log=log)
+            ai_output = gemini_connector.summarize_biases(
+                bias_report,
+                dataset_name=f.filename,
+                shape=df.shape,
+                excluded_columns=excluded_cols,
+                use_multi_key=True,
+                max_retries=3
+            )
 
         plots_payload = build_plots_payload(
             bias_report=bias_report,
@@ -685,6 +788,56 @@ def plot_png(fig_id: str):
     resp.headers.set("Content-Type", "image/png")
     resp.headers.set("Content-Disposition", f"inline; filename={fig_id}.png")
     return resp
+
+
+# --- Cancel Analysis Endpoint ---
+import signal
+from typing import Optional
+
+# Track running analysis jobs (simple global for demo; use a job manager in production)
+RUNNING_ANALYSIS_JOB: Optional[threading.Thread] = None
+RUNNING_ANALYSIS_PID: Optional[int] = None
+
+@app.route("/api/cancel-analysis", methods=["POST"])
+def cancel_analysis():
+    """
+    Cancel the current analysis job, abort running tasks, clean up partial files, and respond with status.
+    Expects JSON body: { "job_id": <optional> }
+    """
+    global RUNNING_ANALYSIS_JOB, RUNNING_ANALYSIS_PID
+    # Attempt to terminate running thread/process
+    canceled = False
+    cleanup_error = None
+    try:
+        # If using subprocess for analysis, terminate it
+        if RUNNING_ANALYSIS_PID:
+            try:
+                os.kill(RUNNING_ANALYSIS_PID, signal.SIGTERM)
+                canceled = True
+            except Exception as e:
+                cleanup_error = f"Failed to kill process: {e}"
+        # If using thread, set a flag or interrupt (not always possible)
+        if RUNNING_ANALYSIS_JOB and RUNNING_ANALYSIS_JOB.is_alive():
+            # No safe way to kill a thread; set a flag in real implementation
+            canceled = True
+        # Clean up partial files (delete temp files in cache dir)
+        cache_dir = get_cache_dir()
+        for fname in os.listdir(cache_dir):
+            if fname.startswith("temp_") or fname.endswith(".tmp"):
+                try:
+                    os.remove(os.path.join(cache_dir, fname))
+                except Exception:
+                    pass
+    except Exception as e:
+        cleanup_error = str(e)
+    # Reset job tracking
+    RUNNING_ANALYSIS_JOB = None
+    RUNNING_ANALYSIS_PID = None
+    status = "Canceled" if canceled else "No active job"
+    resp = { "status": status }
+    if cleanup_error:
+        resp["cleanup_error"] = cleanup_error
+    return jsonify(resp), 200
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
