@@ -1,3 +1,36 @@
+def clean_last_bias_text(text: str) -> str:
+    """
+    Cleans the last mapped bias output by:
+    - Removing unrelated summary/conclusion/recommendation text
+    - Removing extra blank lines and trailing newlines
+    """
+    # Remove any section headers that should not be part of the last bias
+    # These are usually bolded or start with certain phrases
+    section_markers = [
+        "** Overall Reliability Assessment", "** Fairness & Ethical Implications",
+        "** Concluding Summary", "** Actionable Recommendations",
+        "### **Overall Summary and Recommendations**",
+        "**Overall Reliability Assessment:**", "**Fairness & Ethical Implications:**",
+        "**Concluding Summary:**", "**Actionable Recommendations:**",
+        "Overall Assessment and Recommendations",
+        "### Overall Health and Reliability Assessment",
+        "\n\n***\n\n### **",
+        "\n\n****",
+        "\n\n---",
+        "\n---",
+        "--- ### Overall Assessment and Recommendations",
+    ]
+    # Remove everything after the first occurrence of any marker
+    for marker in section_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            text = text[:idx]
+            break
+    # Remove excessive blank lines (more than 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # Remove trailing newlines and spaces
+    text = text.rstrip()
+    return text
 
 
 import re
@@ -221,7 +254,7 @@ def generate_bias_mapping(raw_bias_report, ai_output):
             raw_map[bid] = item if isinstance(item, dict) else {"Description": str(item)}
 
     combined_biases = []
-    for b in parsed:
+    for i, b in enumerate(parsed):
         bid = b.get("bias_id")
         raw_item = raw_map.get(bid, {})
         desc = (
@@ -245,6 +278,9 @@ def generate_bias_mapping(raw_bias_report, ai_output):
                 ai_text = "; ".join([p for p in parts if p]) or desc
             else:
                 ai_text = desc
+        # Only sanitize the last bias output
+        if i == len(parsed) - 1:
+            ai_text = clean_last_bias_text(ai_text)
         sev_match = re.search(r"Severity[:：]\s*([A-Za-z]+)", ai_text, re.IGNORECASE)
         severity = None
         if sev_match:

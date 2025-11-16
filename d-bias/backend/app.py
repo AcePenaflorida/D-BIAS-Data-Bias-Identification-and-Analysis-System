@@ -23,7 +23,7 @@ except ImportError:
 
 # local modules
 from bias_detector import BiasDetector, MLBiasOptimizer, BiasReporter
-from gemini_connector import GeminiConnector
+from gemini_connector import GeminiConnector, GeminiKeyManager
 from bias_mapper import generate_bias_mapping
 from visualization import visualize_fairness_dashboard
 from preprocessing import load_and_preprocess, validate_dataset
@@ -662,16 +662,20 @@ def analyze():
         reporter = BiasReporter(df, bias_report)
         fairness_score = reporter.fairness_score()
 
-        gemini_key = os.getenv("GEMINI_API_KEY", "")
-        ai_output = maybe_run_gemini_summary(
-            run_gemini_flag,
-            gemini_key,
-            bias_report,
-            f.filename,
-            df.shape,
-            excluded_cols,
-            log,
-        )
+
+        # Use GeminiKeyManager and GeminiConnector for multi-key rotation
+        ai_output = None
+        if run_gemini_flag:
+            key_manager = GeminiKeyManager(log=log)
+            gemini_connector = GeminiConnector(key_manager=key_manager, log=log)
+            ai_output = gemini_connector.summarize_biases(
+                bias_report,
+                dataset_name=f.filename,
+                shape=df.shape,
+                excluded_columns=excluded_cols,
+                use_multi_key=True,
+                max_retries=3
+            )
 
         plots_payload = build_plots_payload(
             bias_report=bias_report,

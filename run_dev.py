@@ -20,6 +20,7 @@ import signal
 import shutil
 import subprocess
 from typing import Optional
+from dotenv import load_dotenv
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(ROOT, "d-bias", "backend")
@@ -109,6 +110,9 @@ def main() -> int:
     if not os.path.isdir(FRONTEND_DIR):
         print(f"[error] Frontend directory not found: {FRONTEND_DIR}")
         return 1
+
+    # Load backend environment variables
+    load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
     backend_proc = None
     frontend_proc = None
