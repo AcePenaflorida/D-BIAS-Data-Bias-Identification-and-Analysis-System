@@ -1,23 +1,37 @@
-import { Info, Users } from 'lucide-react';
-
 export function Footer() {
   return (
-    <footer className="bg-white border-t border-slate-200 mt-auto">
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-sm text-slate-600">
-          <button className="flex items-center gap-2 hover:text-slate-900 transition-colors">
-            <Info className="w-4 h-4" />
-            About <span className="font-semibold">D-BIAS</span>
-          </button>
-          <button className="flex items-center gap-2 hover:text-slate-900 transition-colors">
-            <Users className="w-4 h-4" />
-            Developers
-          </button>
+    <footer className="bg-card/50 border-t border-border mt-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mb-8">
+          <div>
+            <h4 className="font-semibold text-foreground mb-4">About D-BIAS</h4>
+            <p className="text-sm text-muted-foreground">
+              Detect and mitigate bias in your datasets with advanced statistical analysis.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground mb-4">Resources</h4>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li><a href="#" className="hover:text-foreground transition-colors">Documentation</a></li>
+              <li><a href="#" className="hover:text-foreground transition-colors">API Reference</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground mb-4">Developers</h4>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li><a href="#" className="hover:text-foreground transition-colors">GitHub</a></li>
+              <li><a href="#" className="hover:text-foreground transition-colors">Support</a></li>
+            </ul>
+          </div>
         </div>
-        <p className="text-center text-xs text-slate-500 mt-4">
-          © 2025 <span className="font-semibold">D-BIAS</span>. Empowering fair and ethical AI.
-        </p>
+        <div className="border-t border-border pt-8 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">© 2025 D-BIAS. All rights reserved.</p>
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+          </div>
+        </div>
       </div>
     </footer>
-  );
+  )
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, Code } from 'lucide-react';
 import { PlotlyFigure } from './charts/PlotlyFigure';
 import { Button } from './ui/button';
@@ -38,6 +38,14 @@ export function Dashboard({
   const [selectedHistoryResult, setSelectedHistoryResult] = useState<AnalysisResult | null>(null);
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [showRawBias, setShowRawBias] = useState(false);
+
+  // Ensure the dashboard view starts at the top of the page when opened.
+  // This prevents the UI from appearing scrolled to the middle if the
+  // previous view had a different scroll position.
+  useEffect(() => {
+    // Use immediate jump to top to avoid an animated reposition on mount.
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, []);
 
   const getFairnessColor = (label: string) => {
     switch (label) {
@@ -97,9 +105,13 @@ export function Dashboard({
             {/* Core Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               <StatCard
-                title="Status"
-                value={result.status === 'complete' ? 'Analysis Complete' : 'Analysis Failed'}
+                title="Analysis Status"
+                value={result.status === 'complete' ? 'Complete' : 'Failed'}
+                subtitle={result.status === 'complete' ? 'Dataset analysis completed successfully' : 'Dataset analysis failed'}
                 variant={result.status === 'complete' ? 'success' : 'error'}
+                inlineBadge={true}
+                inlineBadgePosition="value"
+                className="bg-white border-slate-200"
               />
                 <StatCard
                 title="Fairness Score"
@@ -107,33 +119,43 @@ export function Dashboard({
                 max={100}
                 showProgress
                   showDonut
+                titleAddon={
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-sm leading-none ${getFairnessColor(result.fairnessLabel)}`}>
+                    {result.fairnessLabel}
+                  </span>
+                }
                 />
               <StatCard
-                title="Fairness Label"
-                value={result.fairnessLabel}
-                className={getFairnessColor(result.fairnessLabel)}
-              />
-              <StatCard
-                title="Bias Risk"
-                  value={
-                    <div className="flex items-center flex-wrap gap-2 text-base">
-                      <span className="text-2xl font-semibold leading-tight mr-1">{result.biasRisk}</span>
-                      <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-slate-50 text-slate-700 border-slate-200">
-                        Total: {typeof (result as any).totalBiases === 'number' ? (result as any).totalBiases : result.detectedBiases.length}
-                      </span>
-                      {result.severitySummary && (
-                        <>
-                          {typeof result.severitySummary.Critical === 'number' && (
-                            <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-red-100 text-red-700 border-red-200">Crit: {result.severitySummary.Critical}</span>
-                          )}
-                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-rose-50 text-rose-700 border-rose-200">High: {result.severitySummary.High ?? 0}</span>
-                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-amber-50 text-amber-700 border-amber-200">Mod: {result.severitySummary.Moderate ?? 0}</span>
-                          <span className="px-2.5 py-1 rounded-full border text-[12px] leading-none bg-emerald-50 text-emerald-700 border-emerald-200">Low: {result.severitySummary.Low ?? 0}</span>
-                        </>
-                      )}
+                title="Bias Risk Summary"
+                titleAddon={
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-sm leading-none ${getRiskColor(result.biasRisk)}`}>
+                    {result.biasRisk}
+                  </span>
+                }
+                value={
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-lg border p-4 bg-red-50 border-red-200">
+                      <p className="text-red-600 text-xs font-medium uppercase mb-2">High</p>
+                      <p className="text-2xl font-semibold text-red-600">{result.severitySummary?.High ?? 0}</p>
                     </div>
-                  }
-                className={getRiskColor(result.biasRisk)}
+
+                    <div className="rounded-lg border p-4 bg-amber-50 border-amber-200">
+                      <p className="text-amber-600 text-xs font-medium uppercase mb-2">Moderate</p>
+                      <p className="text-2xl font-semibold text-amber-700">{result.severitySummary?.Moderate ?? 0}</p>
+                    </div>
+
+                    <div className="rounded-lg border p-4 bg-green-50 border-green-200">
+                      <p className="text-green-600 text-xs font-medium uppercase mb-2">Low</p>
+                      <p className="text-2xl font-semibold text-green-700">{result.severitySummary?.Low ?? 0}</p>
+                    </div>
+
+                    <div className="rounded-lg border p-4 bg-blue-50 border-blue-200">
+                      <p className="text-blue-600 text-xs font-medium uppercase mb-2">Total</p>
+                      <p className="text-2xl font-semibold text-blue-700">{typeof (result as any).totalBiases === 'number' ? (result as any).totalBiases : result.detectedBiases.length}</p>
+                    </div>
+                  </div>
+                }
+                className={`bg-white border-slate-200 lg:col-span-2`}
               />
             </div>
 

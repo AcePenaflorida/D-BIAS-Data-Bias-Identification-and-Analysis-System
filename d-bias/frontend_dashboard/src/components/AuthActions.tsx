@@ -26,6 +26,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showSignPassword, setShowSignPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signUpError, setSignUpError] = useState<string | null>(null);
 
@@ -154,9 +155,14 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
                 </div>
               </div>
 
-              <div>
+              <div className="relative">
                 <Label htmlFor="signup-confirm">Confirm Password</Label>
-                <Input id="signup-confirm" name="confirm" type="password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="mt-1" />
+                <div className="mt-1 flex items-center gap-2">
+                  <Input id="signup-confirm" name="confirm" type={showConfirmPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="flex-1" />
+                  <button type="button" className="text-slate-400" onClick={() => setShowConfirmPassword(s => !s)} aria-label="Toggle confirm password visibility">
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {signUpError && <div className="text-sm text-red-600">{signUpError}</div>}

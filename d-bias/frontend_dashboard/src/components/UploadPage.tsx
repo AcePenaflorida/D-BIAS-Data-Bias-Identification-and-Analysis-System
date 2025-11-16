@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Upload, FileSpreadsheet, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
@@ -28,6 +28,7 @@ export function UploadPage({
   userHistory,
   onViewHistory,
 }: UploadPageProps) {
+  const [isScrollingToUpload, setIsScrollingToUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -243,6 +244,24 @@ export function UploadPage({
     }
   };
 
+  // Scroll the upload card into the vertical center of the viewport.
+  // Uses a smooth scroll and clamps the target to the document bounds.
+  const scrollUploadCardToCenter = useCallback(() => {
+    const el = document.getElementById('upload-section');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const elTopInPage = window.scrollY + rect.top;
+    const elCenter = elTopInPage + rect.height / 2;
+    const target = elCenter - window.innerHeight / 2;
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const final = Math.min(Math.max(0, target), maxScroll);
+
+    setIsScrollingToUpload(true);
+    window.scrollTo({ top: final, behavior: 'smooth' });
+    // Clear the pressed animation after an estimated scroll duration.
+    window.setTimeout(() => setIsScrollingToUpload(false), 800);
+  }, []);
+
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null);
 
@@ -266,14 +285,70 @@ export function UploadPage({
 
           {/* Main content (uploader + preview) centered */}
           <div className="flex-1 max-w-4xl mx-auto">
-            {/* Welcome Message */}
+            {/* Hero / Welcome — replaced with larger styled headline per design */}
             <div className="text-center mb-12">
-              <h1 className="text-slate-900 mb-3 font-semibold">D-BIAS</h1>
-              <p className="text-slate-600 text-lg">Your data bias detection companion</p>
+              <h1 className="font-extrabold leading-tight">
+                <span
+                  className="text-slate-900 block leading-tight"
+                  style={{ fontSize: 'clamp(2.5rem, 6vw, 6.5rem)', fontWeight: 800 }}
+                >
+                  D-BIAS,
+                </span>
+                <span
+                  className="text-blue-600 block leading-tight"
+                  style={{ fontSize: 'clamp(2.5rem, 6vw, 6.5rem)', fontWeight: 800 }}
+                >
+                  {' '} your data bias detection companion
+                </span>
+              </h1>
+              <p className="mt-6 text-slate-600 text-base md:text-lg max-w-3xl mx-auto">
+                Detect and analyze bias in your datasets with advanced statistical methods.
+                <br />
+                Make data-driven decisions with confidence.
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollUploadCardToCenter();
+                  }}
+                  className={`group text-blue-600 text-sm inline-flex items-center gap-2 px-3 py-1 rounded-md transition-transform duration-300 ease-out hover:scale-105 active:scale-95 ${isScrollingToUpload ? 'scale-95 opacity-80' : ''}`}
+                >
+                  <span>Scroll down to upload your first dataset</span>
+                  <span aria-hidden className="ml-1 transition-transform duration-300 transform group-hover:translate-x-1">
+                    {/* SVG arrow with glowing drop-shadow and subtle pulse */}
+                    <svg
+                      className="w-5 h-5 text-blue-600"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      style={{ filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.55))' }}
+                      aria-hidden
+                    >
+                      <path d="M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Upload Area */}
+            {/* Dataset preview placeholder (UI-only) */}
             <Card className="p-8 mb-6">
+              <div className="w-full rounded-xl overflow-hidden border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-8 shadow-sm">
+                <div className="h-56 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-blue-300" />
+                    </div>
+                    <p className="text-slate-600">Dataset visualization area</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-8 mb-6" id="upload-section">
               <div
                 className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
                   isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400'
@@ -317,6 +392,21 @@ export function UploadPage({
                     {/* Show only validating status; suppress rows/columns/columns list per refined requirements */}
                     {!uploadInfoError && isValidating && (
                       <p className="mt-2 text-xs text-slate-500">Validating dataset…</p>
+                    )}
+                    {/* Success UI: show a green validated badge when backend validation succeeded */}
+                    {uploadInfo && !uploadInfoError && !isValidating && (
+                      <div className="mt-3">
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className="inline-flex items-center gap-3 rounded-md border border-green-200 bg-green-50 px-3 py-2"
+                        >
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-green-700">
+                            <CheckCircle className="h-4 w-4" />
+                          </span>
+                          <span className="text-sm text-green-800 font-medium">{file.name} validated successfully</span>
+                        </div>
+                      </div>
                     )}
                   </>
                 ) : (
@@ -454,8 +544,10 @@ export function UploadPage({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => document.getElementById('file-upload')?.click()}
-                className="shrink-0"
+                onClick={() => { if (!isAnalyzing) document.getElementById('file-upload')?.click(); }}
+                className={`shrink-0 ${isAnalyzing ? 'opacity-60 pointer-events-none' : ''}`}
+                disabled={isAnalyzing}
+                aria-disabled={isAnalyzing}
               >
                 <FileSpreadsheet className="h-4 w-4 mr-2" /> Re-upload CSV
               </Button>
