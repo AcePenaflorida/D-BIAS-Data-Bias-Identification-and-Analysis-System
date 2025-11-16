@@ -196,7 +196,7 @@ export function UploadPage({
     try {
       // Request both JSON and PNG plot data so previews and PDFs can embed images
       const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'both' }, controller.signal);
-      toast.message('Analysis complete. Preparing to save…');
+      // Suppress any post-analysis toasts
       onAnalysisComplete(result);
     } catch (e: any) {
       const name = String(e?.name || '');
@@ -204,10 +204,10 @@ export function UploadPage({
       const isAbortLike = name === 'AbortError' || /aborted/i.test(msg);
       if (isAbortLike) {
         setError('Analysis canceled.');
-        toast.message('Analysis canceled.');
+        // Suppress cancel toast
       } else {
         setError(msg || 'Analysis failed.');
-        toast.error('Analysis failed: ' + (msg || 'Unknown error'));
+        // Suppress error toast
       }
     } finally {
       setIsAnalyzing(false);

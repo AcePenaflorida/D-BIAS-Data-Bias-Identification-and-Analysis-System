@@ -172,7 +172,7 @@ export default function App() {
   // Save analysis flow: generate 1:1 HTML snapshot if available, render to PDF via backend, save locally, upload, then insert DB row
   async function saveAnalysisFlow(result: AnalysisResult) {
     // 1) Generate PDF
-    toast.message('Generating PDF…');
+    // Suppress toast: Generating PDF
     let pdfBlob: Blob | null = null;
     try {
       // Prefer the hidden preview DOM (always mounted) for exact 1:1 server render
@@ -251,13 +251,13 @@ export default function App() {
     }
 
     // 2) Fetch cached analysis JSON
-    toast.message('Fetching analysis JSON…');
+    // Suppress toast: Fetching analysis JSON
     const cached = await fetchLocalAnalysisJson();
     if (!cached) throw new Error('Cached analysis JSON not found');
     const jsonBlob = new Blob([JSON.stringify(cached, null, 2)], { type: 'application/json' });
 
     // 3) Upload files to Supabase
-    toast.message('Uploading files…');
+    // Suppress toast: Uploading files
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) throw new Error('Not authenticated');
     const rid = Math.random().toString(36).slice(2, 8);
@@ -273,7 +273,7 @@ export default function App() {
     ]);
 
     // 4) Insert DB row
-    toast.message('Saving analysis…');
+    // Suppress toast: Saving analysis
     await saveAnalysisRow({ analysis_json_url: jsonUrl, report_url: pdfUrl, description: result.datasetName });
   }
 
@@ -297,11 +297,11 @@ export default function App() {
       if (cancelled) return;
       try {
         await saveAnalysisFlow(autoSavePending);
-        toast.success('Analysis saved successfully');
+        // Suppress success toast
         const saved = await loadSavedAnalyses();
         if (saved?.length) setUserHistory(saved);
       } catch (e: any) {
-        toast.error('Failed to save analysis: ' + (e?.message || 'Unknown error'));
+        // Suppress error toast
         setUserHistory((prev) => [autoSavePending, ...prev]);
       } finally {
         setAutoSavePending(null);
@@ -321,6 +321,8 @@ export default function App() {
   const handleLogout = async () => {
     try { await signOut(); } catch {}
     setIsAuthenticated(false);
+    setCurrentView('upload');
+    setAnalysisResult(null);
   };
 
   const handleViewHistory = (result: AnalysisResult) => {
