@@ -15,7 +15,6 @@ interface PDFPreviewDialogProps {
 
 export function PDFPreviewDialog({ isOpen, onClose, result }: PDFPreviewDialogProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const printReport = () => {
     if (!contentRef.current) return;
@@ -52,22 +51,6 @@ export function PDFPreviewDialog({ isOpen, onClose, result }: PDFPreviewDialogPr
         </div>
 
         <div className="flex gap-3 pt-4 border-t border-slate-200">
-          <Button
-            onClick={async () => {
-              setSaving(true);
-              try {
-                await persistAnalysisResult(result, result.datasetName);
-                toast.success('Saved JSON and PDF to Supabase');
-              } catch (e: any) {
-                toast.error('Save failed: ' + (e?.message || 'Unknown error'));
-              } finally {
-                setSaving(false);
-              }
-            }}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save to Supabase'}
-          </Button>
           <Button variant="secondary" onClick={printReport} className="flex-1">
             Print / Save PDF
           </Button>
