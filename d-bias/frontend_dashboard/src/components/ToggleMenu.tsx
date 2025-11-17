@@ -282,7 +282,16 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
 
       {/* History Dialog */}
       <Dialog open={openHistory} onOpenChange={setOpenHistory}>
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="w-[90vw] max-w-[1100px] min-w-[340px] max-h-[80vh] rounded-xl overflow-visible"
+          style={{
+            padding: '2rem',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+          }}
+        >
           <div className="w-full relative">
             <DialogHeader className="w-full text-center">
               <DialogTitle className="flex items-center justify-between">
@@ -378,30 +387,70 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
                   </Button>
                 </div>
               ) : (
-                filteredRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h4 className="text-slate-900">{row.description || 'analysis'}</h4>
-                        <p className="text-sm text-slate-500">
-                          {new Date(row.created_at).toLocaleDateString()} at{' '}
-                          {new Date(row.created_at).toLocaleTimeString()}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">saved</span>
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          <Button
-                            variant={pinnedIds.has(row.id) ? 'default' : 'outline'}
-                            size="sm"
+                <div
+                  className="w-full"
+                  style={{
+                    overflowX: 'auto',
+                    paddingBottom: '0.5rem',
+                  }}
+                >
+                  {filteredRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors mb-3 flex flex-col gap-2"
+                      style={{
+                        minWidth: '320px',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-4 mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {/* Compact pin icon */}
+                          <button
                             onClick={() => togglePin(row.id)}
                             title={pinnedIds.has(row.id) ? 'Unpin' : 'Pin'}
+                            className={`p-1 rounded-full border-none bg-transparent focus:outline-none ${pinnedIds.has(row.id) ? 'text-blue-600' : 'text-slate-400'} hover:text-blue-500`}
+                            style={{ minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            {pinnedIds.has(row.id) ? 'Pinned' : 'Pin'}
-                          </Button>
+                            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" style={{ display: 'block' }}>
+                              <path d="M7.5 2a2.5 2.5 0 0 1 5 0v2.09c0 .36.19.7.5.88l3.13 1.88a1 1 0 0 1-.08 1.76l-3.05 1.53a1 1 0 0 0-.55.89V17a1 1 0 0 1-2 0v-5.97a1 1 0 0 0-.55-.89l-3.05-1.53a1 1 0 0 1-.08-1.76l3.13-1.88a1 1 0 0 0 .5-.88V2z" />
+                            </svg>
+                          </button>
+                          {/* Filename with ellipsis truncation */}
+                          <span
+                            className="font-semibold text-slate-900 text-base truncate"
+                            style={{
+                              maxWidth: '220px',
+                              display: 'inline-block',
+                              verticalAlign: 'middle',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={row.description || 'analysis'}
+                          >
+                            {row.description || 'analysis'}
+                          </span>
+                        </div>
+                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 shrink-0">saved</span>
+                      </div>
+                      <div className="flex flex-row gap-4 items-start justify-between">
+                        {/* Date/time left, buttons right vertical */}
+                        <div className="flex flex-col items-start justify-center gap-1 min-w-[120px]">
+                          <span className="text-sm text-slate-500 font-mono">
+                            {new Date(row.created_at).toLocaleString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: true
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-2 items-end">
                           <Button
                             variant="outline"
                             size="sm"
@@ -444,41 +493,49 @@ export default function ToggleMenu({ userHistory = [], onViewHistory, onLogout, 
                                 }
                               })();
                             }}
+                            className="bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 focus:bg-blue-700 font-semibold px-4 py-2 rounded shadow"
+                            style={{ minWidth: 64, minHeight: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', backgroundColor: '#2563eb', border: '1px solid #2563eb' }}
                           >
-                            Open
+                            <span style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', letterSpacing: '0.01em' }}>Open</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => performDownload(row)}
+                            className="flex items-center gap-1"
                           >
-                            Download PDF
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/></svg>
+                            <span>Download PDF</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
                             onClick={() => { setConfirmDeleteId(row.id); setConfirmDeleteRow(row); }}
+                            className="flex items-center gap-1"
                           >
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            <span>Delete</span>
                           </Button>
                         </div>
                       </div>
+                      <div className="flex gap-3 text-xs mt-2 text-slate-600 flex-wrap">
+                        <a className="underline" href={row.analysis_json_url} target="_blank" rel="noreferrer">JSON</a>
+                        <a className="underline" href={row.report_url} target="_blank" rel="noreferrer">PDF</a>
+                      </div>
                     </div>
-                    <div className="flex gap-3 text-xs mt-2 text-slate-600">
-                      <a className="underline" href={row.analysis_json_url} target="_blank" rel="noreferrer">JSON</a>
-                      <a className="underline" href={row.report_url} target="_blank" rel="noreferrer">PDF</a>
-                    </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           </div>
 
           {/* Footer area for history dialog (Close button) */}
           <div className="mt-4 flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setOpenHistory(false)}>Close</Button>
+            <Button variant="outline" size="sm" onClick={() => setOpenHistory(false)}>
+              Close
+            </Button>
           </div>
-          </DialogContent>
+        </DialogContent>
       </Dialog>
       {/* Logout confirmation dialog */}
       <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
