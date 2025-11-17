@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { UploadPage } from './components/UploadPage';
 import { Dashboard } from './components/Dashboard';
-import ToggleMenu from './components/ToggleMenu';
+// ToggleMenu (sidebar) removed — header now shows history/profile/logout
 import { Toaster } from './components/ui/sonner';
 import { getSession, onAuthStateChange, signOut } from './services/auth';
 import { ensureUserProfile, loadSavedAnalyses, saveAnalysis as saveAnalysisRow } from './services/db';
@@ -367,21 +367,7 @@ export default function App() {
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
-        {isAuthenticated && (
-          <ToggleMenu
-            userHistory={userHistory}
-            onViewHistory={handleViewHistory}
-            onLogout={handleLogout}
-            onLogin={handleLogin}
-            isAuthenticated={isAuthenticated}
-            onRefreshHistory={async () => {
-              try {
-                const saved = await loadSavedAnalyses();
-                if (saved?.length) setUserHistory(saved);
-              } catch {}
-            }}
-          />
-        )}
+        {/* Sidebar/ToggleMenu removed. Header now exposes History/Profile/Logout controls. */}
 
         <div className="flex-1">
           {currentView === 'upload' ? (
