@@ -106,7 +106,5 @@ npm-debug.log*
 
 # Explicitly disallow PNG files from being staged/committed
 # Keeps datasets tracked but prevents binary PNG artifacts from being added.
-*.png
-*.PNG
 *.html
 backend_plots/

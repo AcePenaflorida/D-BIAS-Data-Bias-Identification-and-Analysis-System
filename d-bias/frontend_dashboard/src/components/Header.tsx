@@ -7,6 +7,7 @@ import { LogIn, UserPlus, User as UserIcon, History as HistoryIcon, LogOut, Load
 import { AuthActions } from './AuthActions'
 import type { AnalysisResult } from '../App'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
+import HistoryDialog from './HistoryDialog'
 import { Input } from './ui/input'
 import { listAnalysesByUser, deleteAnalysis } from '../services/db'
 import { fetchLatestCachedAnalysis, mapAnalysisFromJson, getProfile as apiGetProfile, updateProfile as apiUpdateProfile } from '../services/api'
@@ -37,6 +38,26 @@ export function Header({
   const [historyLoading, setHistoryLoading] = useState(false)
   const [showPreviewDialog, setShowPreviewDialog] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null)
+  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set())
+
+  // Load pinned IDs from localStorage for simple client-side pin UI
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('dbias_pinned')
+      if (raw) setPinnedIds(new Set(JSON.parse(raw)))
+    } catch {}
+  }, [])
+
+  const persistPins = (next: Set<number>) => {
+    setPinnedIds(next)
+    try { localStorage.setItem('dbias_pinned', JSON.stringify(Array.from(next))) } catch {}
+  }
+
+  const togglePin = (id: number) => {
+    const next = new Set(pinnedIds)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    persistPins(next)
+  }
 
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
 
@@ -205,100 +226,7 @@ export function Header({
         </div>
       </div>
 
-      {/* History Dialog */}
-      <Dialog open={openHistory} onOpenChange={setOpenHistory}>
-        <DialogContent className="max-w-md">
-          <div className="w-full relative">
-            <DialogHeader className="w-full text-center">
-              <DialogTitle className="flex items-center justify-between">
-                <span className="flex-1 text-center">Analysis History</span>
-                <div className="absolute right-0 top-0 mt-1 mr-1">
-                  <Button variant="outline" size="sm" onClick={refreshHistory}>
-                    Refresh
-                  </Button>
-                </div>
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-3 max-h-96 overflow-y-auto mt-3">
-              {historyLoading && <p className="text-xs text-slate-500 px-2">Loading...</p>}
-              {!isAuthenticated ? (
-                <div className="p-6 text-center">
-                  <p className="text-slate-700 mb-3">Please log in to view your analysis history.</p>
-                  <div className="flex justify-center">
-                    <button className="px-3 py-2 bg-blue-600 text-white rounded-md" onClick={() => { onLogin(); setOpenHistory(false); }}>
-                      Login
-                    </button>
-                  </div>
-                </div>
-              ) : historyRows.length === 0 ? (
-                <div className="text-center py-8 space-y-3">
-                  <p className="text-slate-500">No analysis history yet</p>
-                  <Button variant="outline" size="sm" onClick={loadLatestCached}>Load Latest Cached</Button>
-                </div>
-              ) : (
-                historyRows.map((row) => (
-                  <div key={row.id} className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h4 className="text-slate-900">{row.description || 'analysis'}</h4>
-                        <p className="text-sm text-slate-500">{new Date(row.created_at).toLocaleDateString()} at {new Date(row.created_at).toLocaleTimeString()}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">saved</span>
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          <Button size="sm" onClick={async () => {
-                            try {
-                              const href: string = row.analysis_json_url
-                              const res = await fetch(href, { cache: 'no-store' })
-                              const txt = await res.text()
-                              if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                              let data: any
-                              try { data = JSON.parse(txt) } catch { throw new Error('Invalid JSON') }
-                              const mapped = mapAnalysisFromJson(data, String(row.description || 'analysis.csv'))
-                              setSelectedHistory(mapped)
-                              setShowPreviewDialog(true)
-                            } catch {
-                              toast.error('Failed to load analysis JSON (preview)')
-                            }
-                          }}>Preview</Button>
-
-                          <Button size="sm" onClick={async () => {
-                            try {
-                              const href: string = row.analysis_json_url
-                              const res = await fetch(href, { cache: 'no-store' })
-                              const txt = await res.text()
-                              if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                              let data: any
-                              try { data = JSON.parse(txt) } catch { throw new Error('Invalid JSON') }
-                              const mapped = mapAnalysisFromJson(data, String(row.description || 'analysis.csv'))
-                              onViewHistory?.(mapped)
-                              setOpenHistory(false)
-                            } catch {
-                              toast.error('Failed to open analysis (JSON)')
-                            }
-                          }}>Open</Button>
-
-                          <Button size="sm" variant="outline" onClick={() => performDownload(row)}>Download PDF</Button>
-                          <Button size="sm" variant="destructive" onClick={() => requestDelete(row)}>Delete</Button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 text-xs mt-2 text-slate-600">
-                      <a className="underline" href={row.analysis_json_url} target="_blank" rel="noreferrer">JSON</a>
-                      <a className="underline" href={row.report_url} target="_blank" rel="noreferrer">PDF</a>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <Button variant="outline" size="sm" onClick={() => setOpenHistory(false)}>Close</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <HistoryDialog open={openHistory} onOpenChange={setOpenHistory} isAuthenticated={isAuthenticated} onLogin={onLogin} onViewHistory={onViewHistory} onRefreshHistory={refreshHistory} />
 
       {/* Profile Dialog */}
       <Dialog open={profileOpen} onOpenChange={(v) => { setProfileOpen(v); }}>
