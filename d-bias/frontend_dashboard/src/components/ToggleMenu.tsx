@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import Logo from '../assets/logo-d-bias.svg';
+import Logo from '../assets/logo_ver2.png';
 import { User, History, LogOut, Menu } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import HistoryDialog from './HistoryDialog';

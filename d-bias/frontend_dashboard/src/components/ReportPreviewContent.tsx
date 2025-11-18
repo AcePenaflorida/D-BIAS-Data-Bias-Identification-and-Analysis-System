@@ -1,4 +1,5 @@
 import type { AnalysisResult } from '../App';
+import Logo from '../assets/logo_ver2.png';
 
 type Props = { result: AnalysisResult };
 
@@ -55,13 +56,7 @@ export function ReportPreviewContent({ result }: Props) {
       <div className="text-center border-b border-slate-200 pb-6">
         <h1 className="mb-3 flex items-center justify-center gap-2">
           <span className="inline-flex items-center justify-center h-8 w-8">
-            <svg viewBox="0 0 500 500" className="h-8 w-8" aria-hidden="true">
-              <circle cx="356" cy="92" r="80" fill="#41A3B1" />
-              <circle cx="248" cy="78" r="62" fill="#E5933E" />
-              <circle cx="198" cy="230" r="60" fill="#EB5062" />
-              <circle cx="92" cy="156" r="44" fill="#E5933E" />
-              <rect x="220" y="332" width="120" height="120" transform="rotate(50 280 392)" fill="#84AC48" />
-            </svg>
+            <img src={Logo} alt="D-BIAS" className="h-8 w-8 object-contain" />
           </span>
           <span className="text-slate-900 text-xl"><span className="font-semibold">D-BIAS</span> <span className="font-normal">Analysis Report</span></span>
         </h1>

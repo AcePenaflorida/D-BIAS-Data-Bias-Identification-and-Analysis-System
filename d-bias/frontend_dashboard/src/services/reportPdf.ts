@@ -80,3 +80,39 @@ export async function generateFullQualityPDF(result: AnalysisResult, contentElem
   // Return HTML snapshot as Blob so backend can convert to PDF if desired
   return new Blob([html], { type: 'text/html' });
 }
+
+// Inline any external <img> references by fetching them and replacing with data URLs.
+// This ensures server-side HTML -> PDF renderers receive self-contained HTML with images embedded.
+export async function inlineImagesInHtml(html: string): Promise<string> {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const imgs = Array.from(doc.querySelectorAll('img')) as HTMLImageElement[];
+    for (const img of imgs) {
+      const src = img.getAttribute('src') || '';
+      if (!src || src.startsWith('data:')) continue;
+      try {
+        // Resolve relative URLs against current location
+        const abs = new URL(src, typeof window !== 'undefined' ? window.location.href : '');
+        const resp = await fetch(abs.toString());
+        if (!resp.ok) continue;
+        const blob = await resp.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onloadend = () => resolve(String(fr.result));
+          fr.onerror = (e) => reject(e);
+          fr.readAsDataURL(blob);
+        });
+        img.setAttribute('src', dataUrl);
+      } catch {
+        // ignore failures for individual images
+        continue;
+      }
+    }
+    // Reconstruct full HTML document string
+    const serializer = new XMLSerializer();
+    return '<!DOCTYPE html>' + serializer.serializeToString(doc.documentElement);
+  } catch (e) {
+    return html;
+  }
+}

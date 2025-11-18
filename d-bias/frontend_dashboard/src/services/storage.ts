@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import Logo from '../assets/logo_ver2.png';
 import { getCurrentUser } from './auth';
 import type { AnalysisResult } from '../App';
 
@@ -79,9 +80,36 @@ export async function generateAnalysisPdfBlob(result: AnalysisResult): Promise<B
   }
   pdfMake.vfs = vfs;
 
-  const docDefinition = {
+  // Try to fetch the logo asset and convert to a data URL for pdfMake images
+  async function blobToDataUrl(b: Blob): Promise<string> {
+    return await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onloadend = () => resolve(String(fr.result));
+      fr.onerror = (e) => reject(e);
+      fr.readAsDataURL(b);
+    });
+  }
+
+  async function loadLogoDataUrl(): Promise<string | null> {
+    try {
+      const resp = await fetch(Logo);
+      if (!resp.ok) return null;
+      const b = await resp.blob();
+      return await blobToDataUrl(b);
+    } catch {
+      return null;
+    }
+  }
+
+  const logoDataUrl = await loadLogoDataUrl();
+
+  const docDefinition: any = {
+    images: logoDataUrl ? { logo: logoDataUrl } : undefined,
     content: [
-      { text: 'D-BIAS Analysis Report', style: 'h1' },
+      // Header: logo + title
+      logoDataUrl
+        ? { columns: [{ image: 'logo', width: 40, height: 40 }, { text: 'D-BIAS Analysis Report', style: 'h1', margin: [10, 0, 0, 0] }], margin: [0, 0, 0, 8] }
+        : { text: 'D-BIAS Analysis Report', style: 'h1' },
       { text: result.datasetName, style: 'h2', margin: [0, 2, 0, 12] },
       { text: `Generated: ${new Date(result.uploadDate).toLocaleString()}`, style: 'meta', margin: [0, 0, 0, 10] },
       { columns: [

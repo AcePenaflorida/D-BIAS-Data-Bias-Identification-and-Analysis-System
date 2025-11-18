@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-import Logo from '../assets/logo-d-bias.svg'
+import Logo from '../assets/logo_ver2.png'
 import { Button } from './ui/button'
 import { LogIn, UserPlus, User as UserIcon, History as HistoryIcon, LogOut, Loader2 } from 'lucide-react'
 import { AuthActions } from './AuthActions'

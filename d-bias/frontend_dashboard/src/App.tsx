@@ -6,6 +6,7 @@ import { Toaster } from './components/ui/sonner';
 import { getSession, onAuthStateChange, signOut } from './services/auth';
 import { ensureUserProfile, loadSavedAnalyses, saveAnalysis as saveAnalysisRow } from './services/db';
 import { uploadFile } from './services/storage';
+import Logo from './assets/logo_ver2.png';
 import { generateFullQualityPDF } from './services/reportPdf';
 import { toast } from 'sonner';
 import ReportPreviewContent from './components/ReportPreviewContent';
@@ -124,9 +125,36 @@ export default function App() {
       if (vfs) { pdfMake.vfs = vfs; } else { pdfMake = await loadPdfMakeFromCdn(); }
     } catch { pdfMake = await loadPdfMakeFromCdn(); }
 
-    const docDefinition = {
+    // Try to include the app logo in pdfMake fallback as a data URL so fallback PDFs also show it
+    async function blobToDataUrl(b: Blob): Promise<string> {
+      return await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onloadend = () => resolve(String(fr.result));
+        fr.onerror = (e) => reject(e);
+        fr.readAsDataURL(b);
+      });
+    }
+
+    async function loadLogoDataUrl(): Promise<string | null> {
+      try {
+        const resp = await fetch(Logo);
+        if (!resp.ok) return null;
+        const b = await resp.blob();
+        return await blobToDataUrl(b);
+      } catch {
+        return null;
+      }
+    }
+
+    const logoDataUrl = await loadLogoDataUrl();
+
+    const docDefinition: any = {
+      images: logoDataUrl ? { logo: logoDataUrl } : undefined,
       content: [
-        { text: 'D-BIAS Analysis Report', style: 'h1' },
+        // Header: logo + title
+        logoDataUrl
+          ? { columns: [{ image: 'logo', width: 40, height: 40 }, { text: 'D-BIAS Analysis Report', style: 'h1', margin: [10, 0, 0, 0] }], margin: [0, 0, 0, 8] }
+          : { text: 'D-BIAS Analysis Report', style: 'h1' },
         { text: result.datasetName, style: 'h2', margin: [0, 2, 0, 12] },
         { text: `Generated: ${new Date(result.uploadDate).toLocaleString()}`, style: 'meta', margin: [0, 0, 0, 10] },
         { columns: [
@@ -199,8 +227,14 @@ export default function App() {
           }
           prev = headingLower;
         });
-        const { buildPreviewHtml: buildHtml } = await import('./services/reportPdf');
-        const html = buildHtml(result, clone.innerHTML);
+        const { buildPreviewHtml: buildHtml, inlineImagesInHtml } = await import('./services/reportPdf');
+        let html = buildHtml(result, clone.innerHTML);
+        try {
+          // Inline images (logo and any other external images) so server renderer receives self-contained HTML
+          html = await inlineImagesInHtml(html);
+        } catch {
+          // if inlining fails, continue with the original HTML — pdfMake fallback will still include logo
+        }
         const tryServerRender = async (): Promise<Blob> => {
           let lastErr: any = null;
           for (let attempt = 0; attempt < 2; attempt++) {
