@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card } from './ui/card';
-import { Button } from './ui/button';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 interface ExtendedBiasCardProps {
   bias: {
@@ -94,20 +94,76 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
   const sections = extractSections(bias.ai_explanation || '');
   const hasStructured = Object.values(sections).some(arr => arr.length);
 
+  const getSeverityColor = (severity?: string) => {
+    switch ((severity || '').toLowerCase()) {
+      case 'low':
+        return 'bg-green-50 text-green-800 ring-1 ring-green-200';
+      case 'moderate':
+        return 'bg-yellow-50 text-yellow-800 ring-1 ring-yellow-200';
+      case 'high':
+        return 'bg-red-50 text-red-800 ring-1 ring-red-200';
+      case 'critical':
+        return 'bg-red-100 text-red-900 ring-1 ring-red-300';
+      default:
+        return 'bg-slate-50 text-slate-700 ring-1 ring-slate-200';
+    }
+  };
+
   return (
-    <Card className="p-5 space-y-3">
+    <Card
+      className="p-5 space-y-3 cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={() => setOpen(o => !o)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setOpen(o => !o);
+        }
+      }}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h4 className="text-slate-900 mb-1 truncate" title={bias.bias_type}>{bias.bias_type}</h4>
+          <div className="flex items-center gap-2">
+            <h4 className="text-slate-900 mb-1 truncate" title={bias.bias_type}>{bias.bias_type}</h4>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label="Bias definition"
+                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" sideOffset={12} className="max-w-sm">
+                  <p className="text-xs text-slate-600 mb-1">What does this bias mean?</p>
+                  <p className="text-sm text-slate-800">{(bias as any).definition || bias.ai_explanation || bias.description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-xs text-slate-500">Column(s): <span className="text-slate-700">{bias.column || '—'}</span></p>
         </div>
-        <span className="px-3 py-1 rounded-full text-xs border bg-slate-50 text-slate-700 border-slate-200">{bias.severity}</span>
+
+        {/* Severity + toggle placed together (icon-only toggle, no label) */}
+        <div className="flex items-center gap-2">
+          <span className={`px-3 py-1 rounded-full text-xs ${getSeverityColor(bias.severity)}`}>{bias.severity}</span>
+          <button
+            aria-label={open ? 'Hide explanation' : 'Show explanation'}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(o => !o);
+            }}
+            className="p-1 rounded hover:bg-slate-100"
+          >
+            {open ? <ChevronUp className="w-4 h-4 text-slate-600" /> : <ChevronDown className="w-4 h-4 text-slate-600" />}
+          </button>
+        </div>
       </div>
       <p className="text-sm text-slate-700 leading-relaxed">{bias.description}</p>
-      <Button variant="ghost" size="sm" className="w-full justify-between" onClick={() => setOpen(o => !o)}>
-        <span className="text-sm">{open ? 'Hide Explanation' : 'Show Explanation'}</span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </Button>
       {open && (
         <div className="mt-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-5 text-sm">
           {hasStructured ? (

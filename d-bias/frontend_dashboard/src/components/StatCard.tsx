@@ -75,7 +75,7 @@ export function StatCard({
 
       {showDonut && typeof value === 'number' ? (
         <div className="flex-1 flex items-center justify-center">
-          <FairnessDonut score={Number(value)} size={compact ? 68 : 88} strokeWidth={10} showCenterText />
+          <FairnessDonut score={Number(value)} size={compact ? 90 : 120} strokeWidth={10} showCenterText />
         </div>
       ) : (
         <>

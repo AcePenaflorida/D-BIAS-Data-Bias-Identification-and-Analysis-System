@@ -206,14 +206,31 @@ export function Header({
               <button
                 title="Profile"
                 onClick={() => setProfileOpen(true)}
-                className="inline-flex items-center gap-2 rounded-md hover:bg-slate-100 p-1"
+                className="inline-flex items-center gap-2 rounded-md hover:bg-slate-100 p-1 overflow-visible"
               >
                 {profileImage ? (
-                  <img src={profileImage} alt="avatar" className="w-8 h-8 rounded-full object-cover" />
+                  <img
+                    src={profileImage}
+                    alt="avatar"
+                    className="w-8 h-8 rounded-full object-cover ring-2 ring-blue-500 ring-offset-1 ring-offset-white"
+                    // inline override to ensure ring is visible even if an ancestor clips box-shadow or
+                    // some compiled CSS interferes with Tailwind's ring utilities
+                    style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}
+                  />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-700">
-                    {profileInitial || 'U'}
-                  </div>
+                  // Show the user's initial only when we've resolved it; otherwise show a neutral user icon
+                  (profileInitial ? (
+                    <div
+                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-700 ring-2 ring-blue-500 ring-offset-1 ring-offset-white"
+                      style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}
+                    >
+                      {profileInitial}
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-700 ring-2 ring-blue-500 ring-offset-1 ring-offset-white" style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}>
+                      <UserIcon className="w-4 h-4 text-slate-500" />
+                    </div>
+                  ))
                 )}
               </button>
 
