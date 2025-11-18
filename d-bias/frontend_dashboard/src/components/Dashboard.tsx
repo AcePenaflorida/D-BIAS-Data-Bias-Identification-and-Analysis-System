@@ -48,32 +48,40 @@ export function Dashboard({
   }, []);
 
   const getFairnessColor = (label: string) => {
-    switch (label) {
-      case 'Excellent':
+    const key = (label || '').toLowerCase();
+    switch (key) {
+      case 'excellent':
+      case 'high':
+        // High fairness/excellent -> green
         return 'text-green-700 bg-green-50 border-green-200';
-      case 'Good':
+      case 'good':
         return 'text-blue-700 bg-blue-50 border-blue-200';
-      case 'Fair':
+      case 'fair':
+      case 'moderate':
+        // Fair/moderate -> yellow
         return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-      case 'Poor':
-        return 'text-orange-700 bg-orange-50 border-orange-200';
-      case 'Critical':
+      case 'poor':
+        // Poor -> red
         return 'text-red-700 bg-red-50 border-red-200';
+      case 'critical':
+        return 'text-red-800 bg-red-100 border-red-300';
       default:
         return 'text-slate-700 bg-slate-50 border-slate-200';
     }
   };
 
   const getRiskColor = (level: string) => {
-    switch (level) {
-      case 'Low':
+    const key = (level || '').toLowerCase();
+    switch (key) {
+      case 'low':
         return 'text-green-700 bg-green-50 border-green-200';
-      case 'Moderate':
+      case 'moderate':
         return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-      case 'High':
-        return 'text-orange-700 bg-orange-50 border-orange-200';
-      case 'Critical':
+      case 'high':
+        // For risk summary, high should be red
         return 'text-red-700 bg-red-50 border-red-200';
+      case 'critical':
+        return 'text-red-800 bg-red-100 border-red-300';
       default:
         return 'text-slate-700 bg-slate-50 border-slate-200';
     }
@@ -89,21 +97,21 @@ export function Dashboard({
         onViewHistory={onViewHistory}
       />
 
-      <div className="bg-slate-100 border-b border-slate-200 py-4">
-        <div className="container mx-auto px-4">
+      {/* Back button moved into main content for better placement */}
+
+  <main className="flex-1 container mx-auto px-4 py-8">
+        {/* Back to Upload placed here for clearer context and alignment with content */}
+        <div className="mb-6">
           <Button variant="ghost" onClick={onBackToUpload}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Upload
           </Button>
         </div>
-      </div>
-
-  <main className="flex-1 container mx-auto px-4 py-8">
         <div className="flex gap-6">
           {/* Main Content */}
           <div className="flex-1 min-w-0">
             {/* Core Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-14 pb-6">
               <StatCard
                 title="Analysis Status"
                 value={result.status === 'complete' ? 'Complete' : 'Failed'}
@@ -139,9 +147,9 @@ export function Dashboard({
                       <p className="text-2xl font-semibold text-red-600">{result.severitySummary?.High ?? 0}</p>
                     </div>
 
-                    <div className="rounded-lg border p-4 bg-amber-50 border-amber-200">
-                      <p className="text-amber-600 text-xs font-medium uppercase mb-2">Moderate</p>
-                      <p className="text-2xl font-semibold text-amber-700">{result.severitySummary?.Moderate ?? 0}</p>
+                    <div className="rounded-lg border p-4 bg-yellow-50 border-yellow-200">
+                      <p className="text-yellow-600 text-xs font-medium uppercase mb-2">Moderate</p>
+                      <p className="text-2xl font-semibold text-yellow-700">{result.severitySummary?.Moderate ?? 0}</p>
                     </div>
 
                     <div className="rounded-lg border p-4 bg-green-50 border-green-200">
@@ -160,7 +168,7 @@ export function Dashboard({
             </div>
 
             {/* Dataset Information */}
-            <div className="bg-white rounded-lg border border-slate-200 p-6 mb-8">
+            <div className="bg-white rounded-lg border border-slate-200 p-8 mt-6 mb-12">
               <h2 className="text-slate-900 mb-4">Dataset Information</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
@@ -203,23 +211,29 @@ export function Dashboard({
                   <p className="text-slate-500 text-sm mb-1">Variance</p>
                   <p className="text-slate-900">{result.dataset.variance.toLocaleString()}</p>
                 </div>
-                <div className="col-span-2">
-                  <p className="text-slate-500 text-sm mb-1">Reliability Level</p>
-                  <p className={`inline-block px-3 py-1 rounded-full border text-sm ${getRiskColor(result.reliabilityLevel)}`}>
+              </div>
+
+              <hr className="mt-12 mb-12 border-slate-100" />
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <p className="text-slate-500 text-sm leading-none mb-0">Reliability Level</p>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full border text-sm leading-none ${getFairnessColor(result.reliabilityLevel)}`}>
                     {result.reliabilityLevel}
-                  </p>
-                  {result.reliabilityMessage && (
-                    <p className="mt-2 text-slate-700 text-sm max-w-prose">
-                      <span className="font-medium">Notes:</span> {result.reliabilityMessage}
-                    </p>
-                  )}
+                  </span>
                 </div>
               </div>
+
+              {result.reliabilityMessage && (
+                <p className="mt-3 text-slate-700 text-sm max-w-prose">
+                  <span className="font-medium">Notes:</span> {result.reliabilityMessage}
+                </p>
+              )}
             </div>
 
             {/* Plotly Visualizations from backend (fallback to legacy charts if missing) */}
-            <div className="mb-10 space-y-8">
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
+            <div className="mb-12 space-y-10">
+              <div className="bg-white rounded-lg border border-slate-200 p-8 mb-8">
                 {result.plots?.fig1?.plotly ? (
                   <PlotlyFigure figure={result.plots.fig1} title="Bias Overview" />
                 ) : (
@@ -229,7 +243,7 @@ export function Dashboard({
                   </>
                 )}
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="bg-white rounded-lg border border-slate-200 p-6">
                   {result.plots?.fig2?.plotly ? (
                     <PlotlyFigure figure={result.plots.fig2} title="Bias Correlations" />
@@ -264,27 +278,36 @@ export function Dashboard({
             </div>
 
             {/* Structured Bias Results */}
-            <div className="mb-10 space-y-6">
-              <h2 className="text-slate-900">Detected Biases</h2>
-              {/* Correlation / identical feature table */}
-              <BiasCorrelationTable biases={result.detectedBiases} />
-              <div className="space-y-4">
-                {result.detectedBiases.map((bias) => {
-                  // Use extended card when AI explanation contains structured tokens
-                  const ai = bias.ai_explanation || '';
-                  const hasStructured = /(Meaning|Harm|Impact|Fix)\s*:/i.test(ai);
-                  return hasStructured ? (
-                    <ExtendedBiasCard key={bias.id} bias={bias} />
-                  ) : (
-                    <BiasCard key={bias.id} bias={bias} />
-                  );
-                })}
+            <div className="mb-12">
+              {/* Outer container for Detected Biases (header + results) */}
+              <div className="bg-white rounded-lg border border-slate-200 p-6">
+                <h2 className="text-slate-900 mb-4">Detected Biases</h2>
+
+                {/* Inner area containing correlation table and the biases results div */}
+                <div className="space-y-6">
+                  {/* Correlation / identical feature table */}
+                  <BiasCorrelationTable biases={result.detectedBiases} />
+
+                  {/* Bias results list */}
+                  <div className="space-y-6">
+                    {result.detectedBiases.map((bias) => {
+                      // Use extended card when AI explanation contains structured tokens
+                      const ai = bias.ai_explanation || '';
+                      const hasStructured = /(Meaning|Harm|Impact|Fix)\s*:/i.test(ai);
+                      return hasStructured ? (
+                        <ExtendedBiasCard key={bias.id} bias={bias} />
+                      ) : (
+                        <BiasCard key={bias.id} bias={bias} />
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Raw Bias JSON Debug Toggle */}
             {result.rawBiasReport && result.rawBiasReport.length > 0 && (
-              <div className="mb-10">
+              <div className="mb-12">
                 <button
                   onClick={() => setShowRawBias(!showRawBias)}
                   className="flex items-center gap-2 text-xs px-3 py-2 rounded border border-slate-300 bg-white hover:bg-slate-50 transition-colors"
