@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Upload, FileSpreadsheet, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, Loader2, CheckCircle, Info } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
@@ -315,13 +315,13 @@ export function UploadPage({
               <h1 className="font-extrabold leading-tight">
                 <span
                   className="text-slate-900 block leading-tight"
-                  style={{ fontSize: 'clamp(2.5rem, 6vw, 6.5rem)', fontWeight: 800 }}
+                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
                 >
                   D-BIAS,
                 </span>
                 <span
                   className="text-blue-600 block leading-tight"
-                  style={{ fontSize: 'clamp(2.5rem, 6vw, 6.5rem)', fontWeight: 800 }}
+                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
                 >
                   {' '} your data bias detection companion
                 </span>
@@ -455,9 +455,12 @@ export function UploadPage({
 
             {/* Error Message */}
             {error && (
-              <Alert variant="destructive" className="mb-6">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+              <Alert variant="destructive" className="mb-6 animate-fade-in">
+                <span className="inline-flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 stroke-2 text-red-500" />
+                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded font-medium text-xs">Error</span>
+                </span>
+                <AlertDescription className="animate-fade-in text-sm">{error}</AlertDescription>
               </Alert>
             )}
 
@@ -504,7 +507,7 @@ export function UploadPage({
           <div className="mt-3">
             <ul className="space-y-3">
               {extractReasons(uploadInfoError).map((r, idx) => (
-                <li key={idx} className="flex items-start gap-3">
+                <li key={idx} className="flex items-start gap-3 animate-fade-in">
                   <span className="mt-1 inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full bg-red-400"></span>
                   <span className="text-sm text-slate-800">{r}</span>
                 </li>
@@ -512,7 +515,10 @@ export function UploadPage({
             </ul>
           </div>
           <div className="mt-4 text-xs text-slate-500">
-            Tip: Ensure ≥ 20 rows, ≥ 3 columns, include at least one categorical/text feature, and reduce duplicate rows.
+            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium text-xs">
+              <Info className="h-4 w-4 stroke-2" />
+              Tip: Ensure ≥ 20 rows, ≥ 3 columns, include at least one categorical/text feature, and reduce duplicate rows.
+            </span>
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <Button
@@ -522,6 +528,7 @@ export function UploadPage({
                 // Explicitly reset upon closing so summary shows neutral state
                 resetDatasetSelection();
               }}
+              className="transition-all duration-300 ease-in-out hover:bg-blue-50 hover:scale-[1.04] focus:ring-2 focus:ring-blue-400 active:scale-[0.98]"
             >
               Close
             </Button>
@@ -531,11 +538,42 @@ export function UploadPage({
                 resetDatasetSelection();
                 document.getElementById('file-upload')?.click();
               }}
+              className="transition-all duration-300 ease-in-out hover:bg-blue-50 hover:scale-[1.04] focus:ring-2 focus:ring-blue-400 active:scale-[0.98]"
             >
               Choose Another File
             </Button>
           </div>
         </DialogContent>
+              <style>{`
+                @keyframes fade-in {
+                  from { opacity: 0; transform: translateY(12px); }
+                  to { opacity: 1; transform: none; }
+                }
+                .animate-fade-in {
+                  animation: fade-in 0.5s cubic-bezier(.4,0,.2,1) both;
+                }
+                @media (max-width: 640px) {
+                  .DialogContent {
+                    min-width: 100vw !important;
+                    max-width: 100vw !important;
+                    padding: 0.5rem !important;
+                  }
+                  .rounded-xl, .rounded-lg {
+                    border-radius: 1rem !important;
+                  }
+                  .flex-col.md\:flex-row {
+                    flex-direction: column !important;
+                    gap: 1.5rem !important;
+                  }
+                  .max-w-4xl {
+                    max-width: 100vw !important;
+                  }
+                  .container {
+                    padding-left: 0.5rem !important;
+                    padding-right: 0.5rem !important;
+                  }
+                }
+              `}</style>
       </Dialog>
 
       {/* Dataset Preview Dialog */}
@@ -551,45 +589,52 @@ export function UploadPage({
       >
   <DialogContent className="w-[90vw] max-w-[960px] min-w-[340px] max-h-[80vh] rounded-xl overflow-hidden">
           <DialogHeader>
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col md:flex-row items-start justify-between gap-6 md:gap-3 pb-2">
               <div>
-                <DialogTitle>Dataset Preview</DialogTitle>
+                <DialogTitle className="mb-1 text-2xl font-bold text-slate-900">Dataset Preview</DialogTitle>
                 <DialogDescription>
                   {uploadInfo ? (
-                    <span className="text-sm text-slate-600">
-                      <span className="font-medium">File:</span> {file?.name} &nbsp;•&nbsp;
-                      {/* <span className="font-medium">Rows:</span> {uploadInfo.rows} &nbsp;•&nbsp;
-                      <span className="font-medium">Columns:</span> {uploadInfo.cols} */}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-4 mt-2 text-base text-slate-700">
+                      <span className="font-semibold text-blue-700 flex items-center gap-2">
+                        <FileSpreadsheet className="h-5 w-5" /> {file?.name}
+                      </span>
+                      <span className="font-semibold text-slate-600 flex items-center gap-2">
+                        <span className="bg-slate-100 rounded px-2 py-1 text-xs font-medium">Rows: {uploadInfo.rows}</span>
+                        <span className="bg-slate-100 rounded px-2 py-1 text-xs font-medium">Columns: {uploadInfo.cols}</span>
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-slate-500">Validating dataset…</span>
                   )}
                 </DialogDescription>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { if (!isAnalyzing) document.getElementById('file-upload')?.click(); }}
-                className={`shrink-0 ${isAnalyzing ? 'opacity-60 pointer-events-none' : ''}`}
-                disabled={isAnalyzing}
-                aria-disabled={isAnalyzing}
-              >
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> Re-upload CSV
-              </Button>
+              <div className="flex gap-2 items-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { if (!isAnalyzing) document.getElementById('file-upload')?.click(); }}
+                      className={`shrink-0 transition-all duration-300 ease-in-out ${isAnalyzing ? 'opacity-60 pointer-events-none' : 'hover:bg-[#155dfc] hover:text-white hover:scale-[1.04] hover:shadow-lg focus:ring-2 focus:ring-[#155dfc] active:scale-[0.98]'}`}
+                      disabled={isAnalyzing}
+                      aria-disabled={isAnalyzing}
+                    >
+                      <FileSpreadsheet className="h-4 w-4 mr-2" /> Re-upload CSV
+                    </Button>
+              </div>
             </div>
           </DialogHeader>
 
           <div className="rounded-lg border border-slate-200 overflow-hidden">
-            {/* Fixed-size scrollable preview area: enforce both-axis scroll inside dedicated pane */}
-            <div className="w-full max-w-full h-[420px] overflow-x-auto overflow-y-auto overscroll-contain">
+            <div className="w-full max-w-full h-[420px] overflow-x-auto overflow-y-auto overscroll-contain bg-gradient-to-br from-white to-slate-50 shadow-sm custom-scrollbar">
               {preview.length > 0 ? (
-                <table className="w-max text-sm table-auto">
-                  <thead className="sticky top-0 bg-white">
+                <table className="w-max min-w-full text-sm table-auto rounded-lg overflow-hidden shadow border border-slate-100">
+                  <thead className="sticky top-0 bg-white z-10">
                     <tr className="border-b border-slate-200">
                       {preview[0].map((header, idx) => (
                         <th
                           key={idx}
-                          className="text-left px-3 py-2 text-slate-700 whitespace-nowrap bg-white"
+                          className={`text-left px-4 py-3 text-slate-800 font-semibold bg-slate-50 border-r border-slate-100 last:border-r-0 ${idx === 0 ? 'sticky left-0 bg-slate-100 z-20' : ''}`}
+                          tabIndex={0}
+                          aria-label={`Column ${header}`}
                         >
                           {header}
                         </th>
@@ -598,14 +643,20 @@ export function UploadPage({
                   </thead>
                   <tbody>
                     {preview.slice(1).map((row, rowIdx) => (
-                      <tr key={rowIdx} className="border-b border-slate-100">
+                      <tr key={rowIdx} className={`border-b border-slate-100 transition-colors ${rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-blue-50/40`}>
                         {row.map((cell, cellIdx) => (
                           <td
                             key={cellIdx}
-                            className="px-3 py-2 text-slate-700 whitespace-nowrap align-top"
+                            className={`px-4 py-3 text-slate-700 whitespace-nowrap align-top border-r border-slate-50 last:border-r-0 ${cellIdx === 0 ? 'sticky left-0 bg-slate-50 z-10' : ''}`}
                             title={cell}
+                            tabIndex={0}
+                            aria-label={`Row ${rowIdx + 1} Column ${preview[0][cellIdx]}: ${cell}`}
                           >
-                            {cell}
+                            {cell.length > 32 ? (
+                              <span title={cell}>{cell.slice(0, 32)}…</span>
+                            ) : (
+                              cell
+                            )}
                           </td>
                         ))}
                       </tr>
@@ -613,9 +664,21 @@ export function UploadPage({
                   </tbody>
                 </table>
               ) : (
-                <div className="p-6 text-sm text-slate-500">Preparing preview…</div>
+                <div className="p-8 text-base text-slate-500 flex flex-col items-center justify-center h-full">
+                  <svg width="64" height="64" fill="none" viewBox="0 0 64 64" className="mb-4 opacity-60">
+                    <rect x="8" y="16" width="48" height="32" rx="6" fill="#e0e7ef" />
+                    <rect x="16" y="24" width="32" height="8" rx="2" fill="#b6c2e2" />
+                    <rect x="16" y="36" width="20" height="4" rx="2" fill="#cbd5e1" />
+                  </svg>
+                  Preparing preview…
+                </div>
               )}
             </div>
+            <style>{`
+              .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; background: #f1f5f9; }
+              .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+              .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+            `}</style>
           </div>
 
           <div className="mt-4 flex items-center justify-end gap-2">
@@ -632,7 +695,8 @@ export function UploadPage({
                   onClick={handleAnalyze}
                   disabled={!file || isAnalyzing}
                   aria-busy={isAnalyzing}
-                  className="flex items-center gap-2"
+                  className={`flex items-center gap-2 font-semibold transition-all duration-300 ease-in-out bg-[#155dfc] text-white px-6 py-2 rounded-lg shadow-sm hover:bg-[#0e47c2] hover:scale-[1.04] hover:shadow-lg focus:ring-2 focus:ring-[#155dfc] active:scale-[0.98] ${(!file || isAnalyzing) ? 'opacity-60 pointer-events-none' : ''}`}
+                  style={{ backgroundColor: '#155dfc', border: 'none' }}
                 >
                   {isAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
                   {isAnalyzing ? 'Analyzing…' : 'Analyze'}
