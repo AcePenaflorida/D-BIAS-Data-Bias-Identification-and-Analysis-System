@@ -32,11 +32,13 @@ function extractSections(text: string) {
     .filter(Boolean);
   let current: keyof typeof sections | null = null;
   for (const raw of lines) {
-    const hdr = raw.match(/^(Meaning|Harm|Impact|Severity\s*(?:Explanation|Rationale)?|Fix|Mitigation|Recommendations?)\s*:/i);
+    // Match header lines like "Meaning:", "Meaning: text", or just "Meaning" on its own line.
+    const hdr = raw.match(/^(Meaning|Harm|Impact|Severity\s*(?:Explanation|Rationale)?|Fix|Mitigation|Recommendations?)\s*:?\s*(.*)$/i);
     if (hdr) {
-      const label = hdr[1].toLowerCase();
+      const key = hdr[1] as string;
+      const label = key.toLowerCase();
       current = (label.startsWith('severity') ? 'Severity Explanation' : label.startsWith('mitigation') || label.startsWith('recommend') ? 'Fix' : (hdr[1] as keyof typeof sections)) as keyof typeof sections;
-      const rest = raw.replace(/^[^:]+:\s*/, '').trim();
+      const rest = (hdr[2] || '').trim();
       if (rest) sections[current].push(rest);
       continue;
     }
@@ -45,29 +47,51 @@ function extractSections(text: string) {
   return sections;
 }
 
-const formatBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+// Safe formatter for AI explanation content: remove hashtags, escape HTML, convert **bold** to <strong>.
+const formatExplanation = (s: string) => {
+  if (!s) return '';
+  let cleaned = String(s).replace(/#+/g, '');
+  const escapeHtml = (str: string) =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  cleaned = escapeHtml(cleaned);
+  cleaned = cleaned.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return cleaned;
+};
+
+// Block formatter: preserves paragraphs and line breaks for long, unstructured text.
+const formatExplanationBlock = (s: string) => {
+  if (!s) return '';
+  let cleaned = String(s).replace(/#+/g, '');
+  const escapeHtml = (str: string) =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  cleaned = escapeHtml(cleaned);
+  cleaned = cleaned.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Convert multiple blank lines into paragraph breaks, single newlines to <br/>
+  cleaned = cleaned.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br/>');
+  return `<p>${cleaned}</p>`;
+};
 
 function renderSection(title: string, bodyLines?: string[] | string) {
   if (!bodyLines || (Array.isArray(bodyLines) && bodyLines.length === 0)) return null;
   const lines = Array.isArray(bodyLines) ? bodyLines : String(bodyLines).split(/\n+/);
   const cleaned = lines.map(l => l.trim()).filter(Boolean);
   if (cleaned.length === 0) return null;
-  const asList = cleaned.every(l => /^[-*•]|^\d+\./.test(l) || cleaned.length > 1);
+  const asList = cleaned.every(l => /^[-*•]|^\d+\./.test(l));
   return (
-    <div className="space-y-1">
-      <h5 className="text-slate-800 font-medium">{title}</h5>
+    <section className="space-y-3">
+      <h5 className="text-slate-800 text-base font-semibold">{title}</h5>
       {asList ? (
-        <ul className="list-disc pl-5 space-y-1 text-slate-700">
+        <ul className="list-disc ml-6 space-y-2 text-slate-700 text-sm">
           {cleaned.map((l, i) => (
-            <li key={i} dangerouslySetInnerHTML={{ __html: formatBold(l.replace(/^[-*•]\s*/, '')) }} />
+            <li key={i} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: formatExplanation(l.replace(/^[-*•]\s*/, '')) }} />
           ))}
         </ul>
       ) : (
         cleaned.map((l, i) => (
-          <p key={i} className="text-slate-700" dangerouslySetInnerHTML={{ __html: formatBold(l) }} />
+          <p key={i} className="text-slate-700 text-sm pl-4 leading-relaxed" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanation(l) }} />
         ))
       )}
-    </div>
+    </section>
   );
 }
 
@@ -75,16 +99,16 @@ function renderMetaBullets(label: string, items: Array<{ label: string; value?: 
   const visible = items.filter(i => (i.value ?? '').toString().trim().length > 0);
   if (!visible.length) return null;
   return (
-    <div className="space-y-1">
-      <h5 className="text-slate-800 font-medium">{label}</h5>
-      <ul className="list-disc pl-5 space-y-1 text-slate-700">
+    <div className="space-y-2">
+      <div className="text-slate-800 text-sm font-semibold">{label}</div>
+      <dl className="grid grid-cols-1 gap-y-2 text-slate-700 text-sm">
         {visible.map((i, idx) => (
-          <li key={idx}>
-            <span className="font-semibold">{i.label}: </span>
-            <span dangerouslySetInnerHTML={{ __html: formatBold(String(i.value)) }} />
-          </li>
+          <div key={idx} className="flex gap-3 items-start">
+            <dt className="w-28 text-slate-800 font-semibold">{i.label}:</dt>
+            <dd className="flex-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatExplanation(String(i.value)) }} />
+          </div>
         ))}
-      </ul>
+      </dl>
     </div>
   );
 }
@@ -92,7 +116,18 @@ function renderMetaBullets(label: string, items: Array<{ label: string; value?: 
 export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
   const [open, setOpen] = useState(false);
   const sections = extractSections(bias.ai_explanation || '');
-  const hasStructured = Object.values(sections).some(arr => arr.length);
+  // Filter out trivial Severity Explanation entries that only repeat the severity label
+  const filteredSections = { ...sections } as Record<string, string[]>;
+  try {
+    const sev = (bias.severity || '').toString().trim().toLowerCase();
+    const sevText = (filteredSections['Severity Explanation'] || []).join(' ').trim().toLowerCase();
+    if (!sevText || sevText === sev || /^(low|moderate|high|critical)$/.test(sevText)) {
+      filteredSections['Severity Explanation'] = [];
+    }
+  } catch (e) {
+    /* ignore and keep sections as-is */
+  }
+  const hasStructured = Object.values(filteredSections).some(arr => arr.length);
 
   const getSeverityColor = (severity?: string) => {
     switch ((severity || '').toLowerCase()) {
@@ -146,6 +181,7 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
             </TooltipProvider>
           </div>
           <p className="text-xs text-slate-500">Column(s): <span className="text-slate-700">{bias.column || '—'}</span></p>
+
         </div>
 
         {/* Severity + toggle placed together (icon-only toggle, no label) */}
@@ -163,27 +199,53 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
           </button>
         </div>
       </div>
-      <p className="text-sm text-slate-700 leading-relaxed">{bias.description}</p>
+      {/* <p className="text-sm text-slate-700 leading-relaxed">{bias.description}</p> */}
       {open && (
         <div className="mt-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-5 text-sm">
           {hasStructured ? (
             <>
-              {renderMetaBullets('Details', [
-                { label: 'Feature(s)', value: bias.column },
-                { label: 'Bias Type', value: bias.bias_type },
-                { label: 'Severity', value: bias.severity },
-              ])}
-              {renderSection('Meaning', sections['Meaning'])}
-              {renderSection('Harm', sections['Harm'])}
-              {renderSection('Impact', sections['Impact'])}
-              {renderSection('Severity Explanation', sections['Severity Explanation'])}
-              {renderSection('Fix', sections['Fix'])}
+                  {renderSection('Meaning', filteredSections['Meaning'])}
+                  {renderSection('Harm', filteredSections['Harm'])}
+                  {renderSection('Impact', filteredSections['Impact'])}
+                  {renderSection('Severity Explanation', filteredSections['Severity Explanation'])}
+                  {renderSection('Fix', filteredSections['Fix'])}
             </>
           ) : (
-            <p className="text-slate-600" dangerouslySetInnerHTML={{ __html: formatBold(bias.ai_explanation || 'No AI explanation available.') }} />
+            <div className="text-slate-600 text-sm" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanationBlock(bias.ai_explanation || 'No AI explanation available.') }} />
           )}
         </div>
       )}
     </Card>
+  );
+}
+
+// Export a lightweight renderer for AI explanations so other cards can reuse formatting.
+export function AiExplanation({ ai_explanation, column, bias_type, severity }: { ai_explanation?: string; column?: string; bias_type?: string; severity?: string }) {
+  const sections = extractSections(ai_explanation || '');
+  const filteredSections = { ...sections } as Record<string, string[]>;
+  try {
+    const sev = (severity || '').toString().trim().toLowerCase();
+    const sevText = (filteredSections['Severity Explanation'] || []).join(' ').trim().toLowerCase();
+    if (!sevText || sevText === sev || /^(low|moderate|high|critical)$/.test(sevText)) {
+      filteredSections['Severity Explanation'] = [];
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  const hasStructured = Object.values(filteredSections).some(arr => arr.length);
+  return (
+    <div className="space-y-4 text-sm">
+      {hasStructured ? (
+        <>
+          {renderSection('Meaning', filteredSections['Meaning'])}
+          {renderSection('Harm', filteredSections['Harm'])}
+          {renderSection('Impact', filteredSections['Impact'])}
+          {renderSection('Severity Explanation', filteredSections['Severity Explanation'])}
+          {renderSection('Fix', filteredSections['Fix'])}
+        </>
+      ) : (
+        <div className="text-slate-600 text-sm" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanationBlock(ai_explanation || 'No AI explanation available.') }} />
+      )}
+    </div>
   );
 }

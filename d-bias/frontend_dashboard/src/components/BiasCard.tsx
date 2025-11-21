@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { Card } from './ui/card';
+import { AiExplanation } from './ExtendedBiasCard';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 interface BiasCardProps {
@@ -18,86 +19,7 @@ interface BiasCardProps {
 export function BiasCard({ bias }: BiasCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const formatBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 
-  type SectionKey = 'Meaning' | 'Harm' | 'Impact' | 'Severity Explanation' | 'Fix';
-
-  const extractStructuredSections = (text: string): Partial<Record<SectionKey, string>> => {
-    const src = String(text || '')
-      .replace(/\r\n?/g, '\n')
-      .replace(/[\t\u00A0]/g, ' ')
-      .replace(/\n{3,}/g, '\n\n');
-
-    const labelMap: Array<{ key: SectionKey; re: RegExp }> = [
-      { key: 'Meaning', re: /(^|\n)\s*(Meaning|What\s+it\s+means)\s*:\s*/i },
-      { key: 'Harm', re: /(^|\n)\s*(Harm|Risks|Downsides)\s*:\s*/i },
-      { key: 'Impact', re: /(^|\n)\s*(Impact|Effect|Implications)\s*:\s*/i },
-      { key: 'Severity Explanation', re: /(^|\n)\s*(Severity\s*(Explanation|Rationale)?|Why\s+this\s+severity)\s*:\s*/i },
-      { key: 'Fix', re: /(^|\n)\s*(Fix|Mitigation|Remediation|Recommendations?)\s*:\s*/i },
-    ];
-
-    // Find all labeled section positions
-    const matches: Array<{ key: SectionKey; index: number; len: number }> = [];
-    for (const { key, re } of labelMap) {
-      const m = re.exec(src);
-      if (m) matches.push({ key, index: m.index + (m[1]?.length || 0), len: m[0].length - (m[1]?.length || 0) });
-    }
-    matches.sort((a, b) => a.index - b.index);
-    const out: Partial<Record<SectionKey, string>> = {};
-    if (!matches.length) return out;
-    for (let i = 0; i < matches.length; i++) {
-      const cur = matches[i];
-      const start = cur.index + cur.len;
-      const end = i + 1 < matches.length ? matches[i + 1].index : src.length;
-      const chunk = src.slice(start, end).trim();
-      if (chunk) out[cur.key] = chunk;
-    }
-    return out;
-  };
-
-  const renderSection = (title: string, body?: string) => {
-    if (!body) return null;
-    const lines = body.split(/\n+/).map(s => s.trim()).filter(Boolean);
-    const asList = lines.every(l => /^[-*•]|^\d+\./.test(l));
-    if (asList) {
-      return (
-        <div className="space-y-1">
-          <div className="text-slate-800 text-sm font-semibold">{title}</div>
-          <ul className="list-disc pl-5 text-slate-700 text-sm space-y-1">
-            {lines.map((l, i) => (
-              <li key={i} dangerouslySetInnerHTML={{ __html: formatBold(l.replace(/^[-*•]\s*/, '')) }} />
-            ))}
-          </ul>
-        </div>
-      );
-    }
-    return (
-      <div className="space-y-1">
-        <div className="text-slate-800 text-sm font-semibold">{title}</div>
-        {lines.map((l, i) => (
-          <p key={i} className="text-slate-700 text-sm" dangerouslySetInnerHTML={{ __html: formatBold(l) }} />
-        ))}
-      </div>
-    );
-  };
-
-  const renderMetaBullets = (items: Array<{ label: string; value?: string }>) => {
-    const visible = items.filter(i => (i.value ?? '').toString().trim().length > 0);
-    if (!visible.length) return null;
-    return (
-      <div className="space-y-1">
-        <div className="text-slate-800 text-sm font-semibold">Details</div>
-        <ul className="list-disc pl-5 text-slate-700 text-sm space-y-1">
-          {visible.map((i, idx) => (
-            <li key={idx}>
-              <span className="font-semibold">{i.label}: </span>
-              <span dangerouslySetInnerHTML={{ __html: formatBold(String(i.value)) }} />
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
 
   const getSeverityColor = (severity: string) => {
     // Return a set of utility classes that style the severity badge.
@@ -162,28 +84,7 @@ export function BiasCard({ bias }: BiasCardProps) {
 
       {isExpanded && (
         <div className="mt-3 p-4 bg-slate-50/80 rounded-xl ring-1 ring-slate-200 space-y-3">
-          {(() => {
-            const sections = extractStructuredSections(bias.ai_explanation || '');
-            return (
-              <div className="space-y-4">
-                {/* Meta bullets */}
-                {renderMetaBullets([
-                  { label: 'Feature(s)', value: bias.column },
-                  { label: 'Bias Type', value: bias.bias_type },
-                  { label: 'Severity', value: bias.severity },
-                ])}
-                {/* Content sections from AI */}
-                {renderSection('Meaning', sections['Meaning'])}
-                {renderSection('Harm', sections['Harm'])}
-                {renderSection('Impact', sections['Impact'])}
-                {renderSection('Severity Explanation', sections['Severity Explanation'])}
-                {renderSection('Fix', sections['Fix'])}
-                {!sections['Meaning'] && !sections['Harm'] && !sections['Impact'] && !sections['Severity Explanation'] && !sections['Fix'] && (
-                  <p className="text-slate-500 text-sm">No structured details available.</p>
-                )}
-              </div>
-            );
-          })()}
+              <AiExplanation ai_explanation={bias.ai_explanation} column={bias.column} bias_type={bias.bias_type} severity={bias.severity} />
         </div>
       )}
     </Card>
