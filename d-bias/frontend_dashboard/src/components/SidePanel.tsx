@@ -14,6 +14,20 @@ interface SidePanelProps {
 }
 
 export function SidePanel({ assessment, fairnessLabel }: SidePanelProps) {
+    // Utility to render explanation with bold and hashtag removal, and justify paragraph
+    const renderExplanation = (text: string, className?: string) => {
+      // Remove hashtags (lines or inline)
+      let cleaned = text.replace(/#+/g, '');
+      // Replace **text** with <strong>text</strong>
+      cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      return (
+        <span
+          className={className || "text-slate-600 text-sm leading-relaxed"}
+          style={{ textAlign: 'justify', display: 'block' }}
+          dangerouslySetInnerHTML={{ __html: cleaned }}
+        />
+      );
+    };
   const getFairnessColor = (label: string) => {
     const key = (label || '').toLowerCase();
     switch (key) {
@@ -41,27 +55,30 @@ export function SidePanel({ assessment, fairnessLabel }: SidePanelProps) {
     <aside className="w-80 flex-shrink-0 hidden lg:block">
       <div className="sticky top-24">
         <Card className="p-6">
-          <h3 className="text-slate-900 mb-4">Assessment</h3>
-
           {/* Fairness */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-2">
-              <h4 className="text-slate-700">Fairness</h4>
-              <span className={`px-2 py-1 rounded-full text-xs border ${getFairnessColor(fairnessLabel)}`}>
+              <h4 className="text-slate-800 font-semibold tracking-wide uppercase border-l-4 border-indigo-500 pl-3">
+                Fairness
+              </h4>
+              <span
+                className={`px-2 py-1 rounded-full text-xs font-medium border ${getFairnessColor(fairnessLabel)} bg-white shadow-sm`}
+              >
                 {fairnessLabel}
               </span>
             </div>
-            <p className="text-slate-600 text-sm leading-relaxed">{assessment.fairness}</p>
+
+            {renderExplanation(assessment.fairness)}
           </div>
 
           {/* Actionable Recommendations */}
           <div className="mb-6">
-            <h4 className="text-slate-700 mb-3">Actionable Recommendations</h4>
+            <h4 className="text-slate-800 font-semibold tracking-wide uppercase border-l-4 border-green-500 pl-3 mb-3 drop-shadow-sm">Actionable Recommendations</h4>
             <div className="space-y-2">
               {assessment.recommendations.map((rec, idx) => (
                 <div key={idx} className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-slate-600 text-sm">{rec}</p>
+                  {renderExplanation(rec)}
                 </div>
               ))}
             </div>
@@ -69,10 +86,10 @@ export function SidePanel({ assessment, fairnessLabel }: SidePanelProps) {
 
           {/* Conclusion */}
           <div>
-            <h4 className="text-slate-700 mb-2">Conclusion</h4>
+            <h4 className="text-slate-800 font-semibold tracking-wide uppercase border-l-4 border-purple-500 pl-3 mb-2 drop-shadow-sm">Conclusion</h4>
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-amber-900 text-sm leading-relaxed">{assessment.conclusion}</p>
+              {renderExplanation(assessment.conclusion)}
             </div>
           </div>
         </Card>

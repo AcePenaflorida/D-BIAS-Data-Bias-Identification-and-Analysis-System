@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-import Logo from '../assets/logo_ver2.png'
+import Logo from '../assets/logo_ver11.png'
 import { Button } from './ui/button'
 import { LogIn, UserPlus, User as UserIcon, History as HistoryIcon, LogOut, Loader2 } from 'lucide-react'
 import { AuthActions } from './AuthActions'
@@ -170,8 +170,9 @@ export function Header({
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={Logo} alt="D-BIAS" className="w-8 h-8 object-contain" />
-            <h1 className="text-xl font-semibold text-foreground">D-BIAS</h1>
+            {/* <img src={Logo} alt="D-BIAS" className="w-8 h-8 object-contain" /> */}
+            <img src={Logo} alt="D-BIAS" className="w-9 h-9 object-contain" />
+            {/* <h1 className="text-2xl font-extrabold text-foreground tracking-wide !font-extrabold">D-BIAS</h1> */}
           </div>
 
           <div className="flex items-center gap-3">
