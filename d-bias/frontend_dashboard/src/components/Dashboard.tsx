@@ -97,16 +97,25 @@ export function Dashboard({
         onViewHistory={onViewHistory}
       />
 
-      {/* Back button moved into main content for better placement */}
-
-  <main className="flex-1 container mx-auto px-4 py-8">
-        {/* Back to Upload placed here for clearer context and alignment with content */}
-        <div className="mb-6">
-          <Button variant="ghost" onClick={onBackToUpload}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Upload
+      {/* Navigation bar below header */}
+      <nav className="w-full bg-transparent px-4 py-1 mb-1">
+        <div className="container mx-auto flex items-center justify-between mt-3">
+          {/* Back to Upload button on left */}
+          <Button
+            variant="ghost"
+            onClick={onBackToUpload}
+            size="sm"
+            className="flex items-center gap-1 px-2 py-1 rounded-md font-medium text-slate-700 border border-slate-200 hover:bg-slate-50 transition-colors"
+            style={{ minWidth: 'fit-content' }}
+          >
+            <ArrowLeft className="w-3 h-3 mr-1" />
+            {/* <span className="text-sm">Back to Upload</span> */}
           </Button>
+          {/* View PDF Report button removed from nav, now inside Analysis Status card */}
         </div>
+      </nav>
+
+      <main className="flex-1 container mx-auto px-4 py-4">
         <div className="flex gap-6">
           {/* Main Content */}
           <div className="flex-1 min-w-0">
@@ -120,7 +129,19 @@ export function Dashboard({
                 inlineBadge={true}
                 inlineBadgePosition="value"
                 className="bg-white border-slate-200"
-              />
+              >
+                <div className="mt-1 flex justify-end">
+                  <Button
+                    onClick={() => setShowPDFPreview(true)}
+                    size="sm"
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg font-medium text-white transition-colors"
+                    style={{ backgroundColor: '#155dfc', boxShadow: '0 2px 8px rgba(21,93,252,0.10)', minWidth: 'fit-content' }}
+                  >
+                    <FileText className="w-3 h-3 mr-1" />
+                    <span className="text-sm">View PDF Report</span>
+                  </Button>
+                </div>
+              </StatCard>
                 <StatCard
                 title="Fairness Score"
                 value={result.fairnessScore}
@@ -168,68 +189,7 @@ export function Dashboard({
             </div>
 
             {/* Dataset Information */}
-            <div className="bg-white rounded-lg border border-slate-200 p-8 mt-6 mb-12">
-              <h2 className="text-slate-900 mb-4">Dataset Information</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Dataset Name</p>
-                  <p className="text-slate-900">{result.datasetName}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Rows</p>
-                  <p className="text-slate-900">{result.dataset.rows.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Columns</p>
-                  <p className="text-slate-900">{result.dataset.columns}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Mean</p>
-                  <p className="text-slate-900">{result.dataset.mean.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Median</p>
-                  <p className="text-slate-900">{result.dataset.median.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Mode</p>
-                  <p className="text-slate-900">{result.dataset.mode.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Max Value</p>
-                  <p className="text-slate-900">{result.dataset.max.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Min Value</p>
-                  <p className="text-slate-900">{result.dataset.min.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Std Dev</p>
-                  <p className="text-slate-900">{result.dataset.stdDev.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-sm mb-1">Variance</p>
-                  <p className="text-slate-900">{result.dataset.variance.toLocaleString()}</p>
-                </div>
-              </div>
-
-              <hr className="mt-12 mb-12 border-slate-100" />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <p className="text-slate-500 text-sm leading-none mb-0">Reliability Level</p>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full border text-sm leading-none ${getFairnessColor(result.reliabilityLevel)}`}>
-                    {result.reliabilityLevel}
-                  </span>
-                </div>
-              </div>
-
-              {result.reliabilityMessage && (
-                <p className="mt-3 text-slate-700 text-sm max-w-prose">
-                  <span className="font-medium">Notes:</span> {result.reliabilityMessage}
-                </p>
-              )}
-            </div>
+            {/* Dataset Information section removed, now inside Analysis Status card */}
 
             {/* Plotly Visualizations from backend (fallback to legacy charts if missing) */}
             <div className="mb-12 space-y-10">
@@ -333,15 +293,6 @@ export function Dashboard({
           </div>
       </main>
 
-      {/* Sticky Generate PDF Button */}
-      <div className="sticky bottom-0 bg-white border-t border-slate-200 shadow-lg">
-        <div className="container mx-auto px-4 py-4">
-          <Button onClick={() => setShowPDFPreview(true)} size="lg" className="w-full md:w-auto">
-            <FileText className="w-4 h-4 mr-2" />
-            Generate PDF Report
-          </Button>
-        </div>
-      </div>
 
       {/* PDF Preview Dialog */}
       <PDFPreviewDialog

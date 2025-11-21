@@ -60,40 +60,11 @@ export function Header({
   }
 
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const [showLogoutSpinner, setShowLogoutSpinner] = useState(false)
 
-  // Profile state
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [profileLoading, setProfileLoading] = useState(false)
-  const [profileName, setProfileName] = useState('')
-  const [profileEmail, setProfileEmail] = useState('')
-  const [profilePassword, setProfilePassword] = useState('')
-  const [profileInitial, setProfileInitial] = useState<string | null>(null)
-  const [profileImage, setProfileImage] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load lightweight avatar info from Supabase user metadata + backend profile
-    let mounted = true
-    ;(async () => {
-      try {
-        const u = await getCurrentUser()
-        if (!mounted) return
-        const meta: any = (u as any)?.user_metadata ?? {}
-        const avatar = meta?.avatar_url || meta?.picture || meta?.picture_url || meta?.avatar || null
-        if (avatar) setProfileImage(String(avatar))
-        // fallback to backend profile for name
-        const p = await apiGetProfile()
-        if (!mounted) return
-        if (p && p.name) {
-          setProfileName(p.name)
-          setProfileEmail(p.email ?? '')
-          setProfileInitial((p.name || '').trim().charAt(0).toUpperCase())
-        } else if (u && (u as any).email) {
-          const nameFromEmail = String((u as any).email).split('@')[0] || ''
-          setProfileInitial((nameFromEmail || '').trim().charAt(0).toUpperCase())
-        }
-      } catch {}
-    })()
-    return () => { mounted = false }
+    // Profile icon and logic removed as requested.
   }, [isAuthenticated])
 
   useEffect(() => {
@@ -168,131 +139,98 @@ export function Header({
     }
   }
 
-  const saveProfile = async () => {
-    setProfileLoading(true)
-    try {
-      const payload = { name: profileName, email: profileEmail }
-      const saved = await apiUpdateProfile(undefined as any, payload as any)
-      setProfileName(saved.name ?? profileName)
-      setProfileEmail(saved.email ?? profileEmail)
-      setProfileInitial((saved.name || profileName || '').trim().charAt(0).toUpperCase())
-      toast.success('Profile saved')
-      setProfileOpen(false)
-    } catch (e: any) {
-      toast.error('Error saving profile: ' + (e?.message || String(e)))
-    } finally {
-      setProfileLoading(false)
-    }
-  }
+  // const saveProfile = async () => {
+  //   setProfileLoading(true)
+  //   try {
+  //     const payload = { name: profileName, email: profileEmail }
+  //     const saved = await apiUpdateProfile(undefined as any, payload as any)
+  //     setProfileName(saved.name ?? profileName)
+  //     setProfileEmail(saved.email ?? profileEmail)
+  //     setProfileInitial((saved.name || profileName || '').trim().charAt(0).toUpperCase())
+  //     toast.success('Profile saved')
+  //     setProfileOpen(false)
+  //   } catch (e: any) {
+  //     toast.error('Error saving profile: ' + (e?.message || String(e)))
+  //   } finally {
+  //     setProfileLoading(false)
+  //   }
+  // }
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src={Logo} alt="D-BIAS" className="w-8 h-8 object-contain" />
-          <h1 className="text-xl font-semibold text-foreground">D-BIAS</h1>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {!isAuthenticated ? (
-            <AuthActions onLogin={onLogin} onSignUp={() => { /* future */ }} userHistory={userHistory} onViewHistory={onViewHistory} showHistory={showHistory} />
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setOpenHistory(true)}>
-                <HistoryIcon className="w-4 h-4 mr-2" />
-                History
-              </Button>
-
-              <button
-                title="Profile"
-                onClick={() => setProfileOpen(true)}
-                className="inline-flex items-center gap-2 rounded-md hover:bg-slate-100 p-1 overflow-visible"
-              >
-                {profileImage ? (
-                  <img
-                    src={profileImage}
-                    alt="avatar"
-                    className="w-8 h-8 rounded-full object-cover ring-2 ring-blue-500 ring-offset-1 ring-offset-white"
-                    // inline override to ensure ring is visible even if an ancestor clips box-shadow or
-                    // some compiled CSS interferes with Tailwind's ring utilities
-                    style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}
-                  />
-                ) : (
-                  // Show the user's initial only when we've resolved it; otherwise show a neutral user icon
-                  (profileInitial ? (
-                    <div
-                      className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-700 ring-2 ring-blue-500 ring-offset-1 ring-offset-white"
-                      style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}
-                    >
-                      {profileInitial}
-                    </div>
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-700 ring-2 ring-blue-500 ring-offset-1 ring-offset-white" style={{ boxShadow: '0 0 0 3px rgba(59,130,246,1), 0 0 0 4px rgba(255,255,255,1)' }}>
-                      <UserIcon className="w-4 h-4 text-slate-500" />
-                    </div>
-                  ))
-                )}
-              </button>
-
-              <Button variant="ghost" size="sm" onClick={() => setLogoutConfirmOpen(true)}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <HistoryDialog open={openHistory} onOpenChange={setOpenHistory} isAuthenticated={isAuthenticated} onLogin={onLogin} onViewHistory={onViewHistory} onRefreshHistory={refreshHistory} />
-
-      {/* Profile Dialog */}
-      <Dialog open={profileOpen} onOpenChange={(v) => { setProfileOpen(v); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Profile</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-3">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm text-slate-600">Full name</label>
-              <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Your full name" className="bg-white" />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm text-slate-600">Email</label>
-              <Input type="email" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="you@example.com" className="bg-white" />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm text-slate-600">Password</label>
-              <Input type="password" value={profilePassword} onChange={(e) => setProfilePassword(e.target.value)} placeholder="Enter new password (leave blank to keep current)" className="bg-white" />
-            </div>
-
-            <div className="flex items-center justify-end gap-3">
-              <Button variant="ghost" size="sm" onClick={() => setProfileOpen(false)} disabled={profileLoading}>Cancel</Button>
-              <Button size="sm" onClick={saveProfile} disabled={profileLoading}>{profileLoading ? 'Saving...' : 'Save'}</Button>
-            </div>
+    <>
+      {/* Show spinner overlay during logout */}
+      {showLogoutSpinner && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white bg-opacity-80 transition-all duration-300">
+          <div className="flex flex-col items-center">
+            <Loader2 className="animate-spin text-blue-600 w-12 h-12 mb-4" />
+            <span className="text-lg font-medium text-slate-700">Logging out...</span>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Logout confirmation dialog */}
-      <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
-        <DialogContent className="w-full max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Confirm logout</DialogTitle>
-          </DialogHeader>
-          <div className="py-2 text-sm text-slate-700">Are you sure you want to log out?</div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setLogoutConfirmOpen(false)}>No</Button>
-            <Button variant="destructive" size="sm" onClick={() => { setLogoutConfirmOpen(false); setOpenHistory(false); onLogout(); }}>Yes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {selectedHistory && (
-        <PDFPreviewDialog isOpen={showPreviewDialog} onClose={() => setShowPreviewDialog(false)} result={selectedHistory} />
+        </div>
       )}
-    </header>
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src={Logo} alt="D-BIAS" className="w-8 h-8 object-contain" />
+            <h1 className="text-xl font-semibold text-foreground">D-BIAS</h1>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {!isAuthenticated ? (
+              <AuthActions onLogin={onLogin} onSignUp={() => { /* future */ }} userHistory={userHistory} onViewHistory={onViewHistory} showHistory={showHistory} />
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setOpenHistory(true)}>
+                  <HistoryIcon className="w-6 h-6 mr-2" />
+                  History
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setLogoutConfirmOpen(true)}>
+                  <LogOut className="w-6 h-6 mr-2" />
+                  Logout
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <HistoryDialog open={openHistory} onOpenChange={setOpenHistory} isAuthenticated={isAuthenticated} onLogin={onLogin} onViewHistory={onViewHistory} onRefreshHistory={refreshHistory} />
+
+        {/* Profile Dialog */}
+        {/* Profile dialog removed as requested. */}
+
+        {/* Logout confirmation dialog */}
+        <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+          <DialogContent className="w-full max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Confirm logout</DialogTitle>
+            </DialogHeader>
+            <div className="py-2 text-sm text-slate-700">Are you sure you want to log out?</div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setLogoutConfirmOpen(false)}>No</Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  setLogoutConfirmOpen(false);
+                  setShowLogoutSpinner(true);
+                  setOpenHistory(false);
+                  // Wait a short moment for smooth transition
+                  await new Promise(res => setTimeout(res, 500));
+                  await onLogout();
+                  // Optionally, keep spinner for a moment after logout
+                  setTimeout(() => setShowLogoutSpinner(false), 800);
+                }}
+              >
+                Yes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {selectedHistory && (
+          <PDFPreviewDialog isOpen={showPreviewDialog} onClose={() => setShowPreviewDialog(false)} result={selectedHistory} />
+        )}
+      </header>
+    </>
   )
 }
 

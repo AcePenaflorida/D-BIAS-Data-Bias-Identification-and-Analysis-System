@@ -19,6 +19,8 @@ interface StatCardProps {
   /** Render a small inline badge next to either the title or the value */
   inlineBadge?: boolean;
   inlineBadgePosition?: 'title' | 'value';
+  /** Children rendered below subtitle */
+  children?: ReactNode;
 }
 
 export function StatCard({
@@ -34,6 +36,7 @@ export function StatCard({
   titleAddon,
   inlineBadge = false,
   inlineBadgePosition = 'title',
+  children,
 }: StatCardProps) {
   const getVariantClasses = () => {
     switch (variant) {
@@ -117,7 +120,9 @@ export function StatCard({
       )}
 
       {/* Subtitle / description under the value (keeps card size intact) */}
-      {subtitle && <p className="mt-4 text-slate-600 text-sm">{subtitle}</p>}
+      {subtitle && <p className="mt-0 mb-0 text-slate-600 text-sm">{subtitle}</p>}
+      {/* Children below subtitle */}
+      {children}
     </Card>
   );
 }
