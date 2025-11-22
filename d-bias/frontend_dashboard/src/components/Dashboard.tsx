@@ -245,8 +245,8 @@ export function Dashboard({
 
                 {/* Inner area containing correlation table and the biases results div */}
                 <div className="space-y-6">
-                  {/* Correlation / identical feature table */}
-                  <BiasCorrelationTable biases={result.detectedBiases} />
+                  {/* Correlation / identical feature table
+                  <BiasCorrelationTable biases={result.detectedBiases} /> */}
 
                   {/* Bias results list */}
                   <div className="space-y-6">

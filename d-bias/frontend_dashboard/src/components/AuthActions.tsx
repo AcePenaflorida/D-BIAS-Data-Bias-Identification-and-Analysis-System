@@ -29,6 +29,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
   const [showSignPassword, setShowSignPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [signPassword, setSignPassword] = useState('');
   const [signUpError, setSignUpError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,11 +63,11 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
     const payload = {
       name: String(formData.get('name') || ''),
       email: String(formData.get('email') || ''),
-      password: String(formData.get('password') || ''),
+      password: signPassword,
     };
 
-    const pwd = payload.password;
-    const confirm = String(formData.get('confirm') || '');
+    const pwd = signPassword;
+    const confirm = confirmPassword;
     if (!pwd || pwd.length < 6) {
       setSignUpError('Password must be at least 6 characters');
       return;
@@ -82,12 +83,18 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
       onSignUp?.(payload);
       setShowSignUpDialog(false);
       setShowLoginDialog(true);
+        // clear local inputs after success
+        setSignPassword('');
+        setConfirmPassword('');
+        setSignUpError(null);
     } catch (err: any) {
       setSignUpError(err?.message || 'Sign up failed');
     } finally {
       setBusy(false);
     }
   };
+
+  const canSubmit = signPassword.length >= 6 && signPassword === confirmPassword;
 
   return (
     <>
@@ -178,7 +185,16 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
               <div className="relative">
                 <Label htmlFor="signup-password">Password</Label>
                 <div className="mt-1 flex items-center gap-2">
-                  <Input id="signup-password" name="password" type={showSignPassword ? 'text' : 'password'} placeholder="Create a password" required className="flex-1" />
+                  <Input
+                    id="signup-password"
+                    name="password"
+                    type={showSignPassword ? 'text' : 'password'}
+                    placeholder="Create a password"
+                    required
+                    className="flex-1"
+                    value={signPassword}
+                    onChange={(e) => { setSignPassword(e.target.value); setSignUpError(null); }}
+                  />
                   <button type="button" className="text-slate-400" onClick={() => setShowSignPassword(s => !s)} aria-label="Toggle password visibility">
                     {showSignPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -188,7 +204,15 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
               <div className="relative">
                 <Label htmlFor="signup-confirm">Confirm Password</Label>
                 <div className="mt-1 flex items-center gap-2">
-                  <Input id="signup-confirm" name="confirm" type={showConfirmPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="flex-1" />
+                  <Input
+                    id="signup-confirm"
+                    name="confirm"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Confirm password"
+                    value={confirmPassword}
+                    onChange={(e) => { setConfirmPassword(e.target.value); setSignUpError(null); }}
+                    className="flex-1"
+                  />
                   <button type="button" className="text-slate-400" onClick={() => setShowConfirmPassword(s => !s)} aria-label="Toggle confirm password visibility">
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -199,7 +223,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
 
               <div className="flex items-center justify-end gap-3 mt-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setShowSignUpDialog(false)}>Cancel</Button>
-                <Button type="submit" size="sm" disabled={!!signUpError || busy}>{busy ? 'Creating…' : 'Create account'}</Button>
+                <Button type="submit" size="sm" disabled={!canSubmit || busy}>{busy ? 'Creating…' : 'Create account'}</Button>
               </div>
             </form>
           </div>

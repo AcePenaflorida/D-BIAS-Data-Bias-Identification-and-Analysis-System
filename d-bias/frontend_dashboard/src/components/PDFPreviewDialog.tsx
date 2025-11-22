@@ -41,7 +41,7 @@ export function PDFPreviewDialog({ isOpen, onClose, result }: PDFPreviewDialogPr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[90%] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>PDF Report Preview</DialogTitle>
         </DialogHeader>

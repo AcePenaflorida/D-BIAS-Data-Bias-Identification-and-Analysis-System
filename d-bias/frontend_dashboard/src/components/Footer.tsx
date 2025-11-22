@@ -6,7 +6,7 @@ export function Footer() {
           <div>
             <h4 className="font-semibold text-foreground mb-4">About D-BIAS</h4>
             <p className="text-sm text-muted-foreground">
-              Detect and mitigate bias in your datasets with advanced statistical analysis.
+              A web-based and AI-powered platform that automatically detects, analyzes, explains, and visualizes biases within datasets before they are used for machine learning applications. The system combines statistical analysis, machine learning techniques, and AI-driven interpretive summaries to evaluate dataset fairness and transparency.
             </p>
           </div>
           <div>
@@ -19,7 +19,16 @@ export function Footer() {
           <div>
             <h4 className="font-semibold text-foreground mb-4">Developers</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground transition-colors">GitHub</a></li>
+              <li>
+                <a
+                  href="https://github.com/AcePenaflorida/D-BIAS-Data-Bias-Identification-and-Analysis-System"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors"
+                >
+                  GitHub
+                </a>
+              </li>
               <li><a href="#" className="hover:text-foreground transition-colors">Support</a></li>
             </ul>
           </div>
