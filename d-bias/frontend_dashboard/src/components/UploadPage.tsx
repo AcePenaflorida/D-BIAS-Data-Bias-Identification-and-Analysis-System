@@ -8,6 +8,7 @@ import { Header } from './Header';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { Footer } from './Footer';
 import type { AnalysisResult } from '../App';
+import { DistributionChart } from './charts/DistributionChart';
 import { analyzeDatasetThrottled, uploadDataset, fetchLatestCachedAnalysis, type UploadInfo, cancelAnalysis } from '../services/api';
 import { toast } from 'sonner';
 
@@ -20,6 +21,7 @@ interface UploadPageProps {
   onViewHistory: (result: AnalysisResult) => void;
 }
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import RotatingText from './RotatingText';
 
 export function UploadPage({
   onAnalysisComplete,
@@ -44,6 +46,8 @@ export function UploadPage({
   const [isLoadingCached, setIsLoadingCached] = useState(false);
   const [hasCached, setHasCached] = useState<boolean | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [distributionData, setDistributionData] = useState<Array<{ value: number; frequency: number }> | null>(null);
+  const [showHeroImage, setShowHeroImage] = useState<boolean>(true);
   // Cancel analysis and notify backend
   const handleCancelAnalyze = async () => {
     if (analysisController) {
@@ -161,6 +165,70 @@ export function UploadPage({
       error: () => setPreview([]),
     });
   };
+
+  // Compute a simple histogram distribution (bell-curve like) from preview data.
+  // Chooses the best numeric column automatically (first column with most numeric values).
+  useEffect(() => {
+    try {
+      if (!preview || preview.length < 2) {
+        setDistributionData(null);
+        return;
+      }
+
+      const header = preview[0] || [];
+      const rows = preview.slice(1);
+
+      const colCount = header.length;
+      const numericCounts: number[] = new Array(colCount).fill(0);
+      const numericValues: number[][] = new Array(colCount).fill(null).map(() => []);
+
+      for (const r of rows) {
+        for (let ci = 0; ci < colCount; ci++) {
+          const cell = (r[ci] ?? '').toString().trim();
+          if (cell === '') continue;
+          const v = Number(cell.replace(/[, ]+/g, ''));
+          if (!Number.isFinite(v) || Number.isNaN(v)) continue;
+          numericCounts[ci]++;
+          numericValues[ci].push(v);
+        }
+      }
+
+      // pick the column with the most numeric values and at least 3 numeric points
+      let bestIdx = -1;
+      let bestCount = 0;
+      for (let i = 0; i < numericCounts.length; i++) {
+        if (numericCounts[i] > bestCount) {
+          bestCount = numericCounts[i];
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx === -1 || bestCount < 3) {
+        setDistributionData(null);
+        return;
+      }
+
+      const values = numericValues[bestIdx];
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const bins = Math.min(30, Math.max(6, Math.ceil(Math.sqrt(values.length))));
+      const range = max - min || 1;
+      const binSize = range / bins;
+      const counts = new Array(bins).fill(0);
+
+      for (const v of values) {
+        let bi = Math.floor((v - min) / binSize);
+        if (bi < 0) bi = 0;
+        if (bi >= bins) bi = bins - 1;
+        counts[bi]++;
+      }
+
+      const data = counts.map((c, i) => ({ value: +(min + (i + 0.5) * binSize), frequency: c }));
+      setDistributionData(data);
+    } catch (err) {
+      setDistributionData(null);
+    }
+  }, [preview]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -287,6 +355,37 @@ export function UploadPage({
     window.setTimeout(() => setIsScrollingToUpload(false), 800);
   }, []);
 
+  // Show the distribution on the page: close preview then scroll to distribution card
+  const handleViewDistribution = useCallback(() => {
+    if (!uploadInfo || uploadInfoError) return;
+    // close preview dialog first so user sees the page content
+    setShowPreviewDialog(false);
+    // allow dialog to close animation / DOM updates
+    window.setTimeout(() => {
+      const el = document.getElementById('distribution-card');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        try { (el as HTMLElement).focus?.(); } catch {}
+      } else {
+        // fallback: scroll upload card to center
+        scrollUploadCardToCenter();
+      }
+    }, 120);
+  }, [scrollUploadCardToCenter, uploadInfo, uploadInfoError]);
+
+  // From visualization card: open preview dialog and ensure modal is scrolled into view
+  const handleContinueAnalyzing = useCallback(() => {
+    if (!uploadInfo || uploadInfoError) return;
+    setShowPreviewDialog(true);
+    // small delay for modal mount/animations, then ensure dialog content is visible
+    window.setTimeout(() => {
+      const modal = document.querySelector('[data-preview-dialog]');
+      if (modal && typeof (modal as HTMLElement).scrollIntoView === 'function') {
+        (modal as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+  }, [uploadInfo, uploadInfoError]);
+
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null);
 
@@ -310,22 +409,40 @@ export function UploadPage({
 
           {/* Main content (uploader + preview) centered */}
           <div className="flex-1 max-w-4xl mx-auto">
-            {/* Hero / Welcome — replaced with larger styled headline per design */}
+            {/* Hero / Welcome — rotating headline component */}
             <div className="text-center mb-12">
-              <h1 className="font-extrabold leading-tight">
-                <span
-                  className="text-slate-900 block leading-tight"
-                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
-                >
-                  D-BIAS,
-                </span>
-                <span
-                  className="text-blue-600 block leading-tight"
-                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
-                >
-                  {' '} your data bias detection companion
-                </span>
-              </h1>
+                <h1 className="font-extrabold leading-tight">
+                  <span
+                    className="text-slate-900 block leading-tight"
+                    style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
+                  >
+                    AI-Powered Data Bias&nbsp;
+                  </span>
+                  <span
+                    className="block leading-tight"
+                    style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 700, color: '#104ac9' }}
+                  >
+                    {' '}
+                  <br />
+                    
+                    <span className="inline-block mx-2">
+                      <RotatingText
+                        texts={['[ Detection ]', '[ Visualization ]', '[ Explanation ]']}
+                        mainClassName="inline-block"
+                        splitBy="words"
+                        staggerFrom={"last"}
+                        initial={{ y: '100%', opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: '-80%', opacity: 0 }}
+                        staggerDuration={0.035}
+                        splitLevelClassName="overflow-hidden pb-0.5 sm:pb-1 md:pb-1"
+                        transition={{ type: 'tween', duration: 0.5, ease: [0.22, 0.8, 0.2, 1] }}
+                        rotationInterval={3000}
+                      />
+                    </span>
+                    
+                  </span>
+                </h1>
               <p className="mt-6 text-slate-600 text-base md:text-lg max-w-3xl mx-auto">
                 Detect and analyze bias in your datasets with advanced statistical methods.
                 <br />
@@ -359,19 +476,43 @@ export function UploadPage({
             </div>
 
             {/* Upload Area */}
-            {/* Dataset preview placeholder (UI-only) */}
-            <Card className="p-8 mb-6">
-              <div className="w-full rounded-xl overflow-hidden border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-8 shadow-sm">
-                <div className="h-56 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-full bg-blue-300" />
+            {/* Dataset preview / distribution chart */}
+
+            <Card className="p-8 mb-6" id="distribution-card">
+              <div className="w-full rounded-xl overflow-hidden border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
+                {distributionData ? (
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800 mb-3">Data distribution (approx.)</h3>
+                    <div className="w-full h-44 sm:h-40 md:h-48 lg:h-56">
+                      <DistributionChart data={distributionData} />
                     </div>
-                    <p className="text-slate-600">Dataset visualization area</p>
+                    <div className="mt-2 text-xs text-slate-500">Shown for the most numeric column detected in the preview. Hover to inspect values.</div>
+                    {uploadInfo && !uploadInfoError && (
+                      <div className="mt-4 flex justify-end">
+                        <Button onClick={handleContinueAnalyzing} className="font-semibold">
+                          Continue Analyzing
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                </div>
+                ) : (
+                  <div className="h-44 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-sm text-slate-500">Ready to get insights? Upload a dataset to visualize distributions.</div>
+                        <div className="mt-3">
+                          <Button
+                            onClick={() => document.getElementById('file-upload')?.click()}
+                            className="bg-blue-600 text-white px-3 py-1 rounded-md"
+                          >
+                            Upload dataset
+                          </Button>
+                        </div>
+                      </div>
+                  </div>
+                )}
               </div>
             </Card>
+            
 
             <Card className="p-8 mb-6" id="upload-section">
               <div
@@ -452,6 +593,8 @@ export function UploadPage({
                 )}
               </div>
             </Card>
+
+            
 
             {/* Error Message */}
             {error && (
@@ -581,13 +724,19 @@ export function UploadPage({
         open={showPreviewDialog}
         onOpenChange={(open) => {
           if (!open) {
+            // If an analysis is running, treat closing the preview (click outside)
+            // as a cancellation signal: abort frontend request and notify backend.
+            if (isAnalyzing) {
+              // fire-and-forget the async cancel handler to avoid blocking UI
+              void handleCancelAnalyze();
+            }
             closePreviewDialog();
           } else if (!isAnalyzing) {
             setShowPreviewDialog(true);
           }
         }}
       >
-  <DialogContent className="w-[90vw] max-w-[960px] min-w-[340px] max-h-[80vh] rounded-xl overflow-hidden">
+  <DialogContent data-preview-dialog className="w-[90vw] max-w-[960px] min-w-[340px] max-h-[80vh] rounded-xl overflow-hidden">
           <DialogHeader>
             <div className="flex flex-col md:flex-row items-start justify-between gap-6 md:gap-3 pb-2">
               <div>
@@ -690,6 +839,15 @@ export function UploadPage({
               >
                 {isAnalyzing ? (isCancelling ? 'Cancelling…' : 'Cancel') : 'Close'}
               </Button>
+                  {uploadInfo && !uploadInfoError && distributionData && (
+                    <Button
+                      variant="outline"
+                      onClick={handleViewDistribution}
+                      className="transition-all duration-200"
+                    >
+                      View Distribution
+                    </Button>
+                  )}
               {uploadInfo && !uploadInfoError && (
                 <Button
                   onClick={handleAnalyze}

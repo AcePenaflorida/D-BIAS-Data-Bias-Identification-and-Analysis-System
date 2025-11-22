@@ -40,6 +40,7 @@
             "jspdf": "^3.0.3",
             "jszip": "^3.10.1",
             "lucide-react": "^0.487.0",
+            "motion": "^12.23.24",
             "next-themes": "^0.4.6",
             "papaparse": "^5.4.1",
             "pdfmake": "^0.2.10",

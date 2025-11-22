@@ -58,6 +58,9 @@ class GeminiConnector:
         self.api_key = api_key
         self.key_manager = key_manager
         self.log = log or (lambda msg: print(f"[GeminiConnector] {msg}"))
+        # Optional callable returning True when a cancel has been requested.
+        # Callers (e.g. app.analyze) may set `connector.cancel_requested = lambda: CANCEL_REQUESTED`.
+        self.cancel_requested = lambda: False
         if api_key:
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel("models/gemini-2.5-pro")
@@ -162,6 +165,13 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 raise ValueError("GeminiKeyManager required for multi-key usage.")
             attempt = 0
             while attempt < max_retries:
+                # Respect cooperative cancellation if requested by caller
+                try:
+                    if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
+                        self.log("Gemini summarize canceled by request")
+                        return "Analysis canceled by user."
+                except Exception:
+                    pass
                 key = self.key_manager.get_next_key()
                 if not key:
                     self.log("All Gemini keys on cooldown, cannot proceed")
@@ -170,6 +180,10 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 genai.configure(api_key=gemini_key)
                 self.model = genai.GenerativeModel("models/gemini-2.5-pro")
                 try:
+                    # Check cancellation immediately before making the external call
+                    if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
+                        self.log("Gemini summarize canceled by request (pre-call)")
+                        return "Analysis canceled by user."
                     response = self.model.generate_content(prompt)
                     self.log(f"Gemini response received (key {key['id']})")
                     summary_text = self._extract_text(response)

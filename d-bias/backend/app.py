@@ -11,6 +11,7 @@ import threading
 import random
 import hashlib
 import io
+import tempfile
  
 import json
 from datetime import timedelta
@@ -566,8 +567,67 @@ def save_pdf_to_cache():
         out_dir = get_cache_dir()
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, base_name)
-        f.save(out_path)
-        return jsonify({"path": out_path, "filename": base_name}), 200
+
+        # Save upload to a temp file inside the same directory, then atomically
+        # replace the final file after removing existing PDFs. This reduces the
+        # chance of leaving a partially-written file and is more robust on
+        # cross-platform filesystems.
+        tmp_path = None
+        try:
+            fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=out_dir)
+            os.close(fd)
+            # Save incoming file to temp path first
+            f.save(tmp_path)
+        except Exception as e:
+            # cleanup temp if created
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            return jsonify({"error": f"failed to save upload to temp file: {e}"}), 500
+
+        # Delete existing PDFs (except the temp we just wrote). Collect any
+        # delete errors to report but continue where possible.
+        delete_errors = []
+        try:
+            for fname in os.listdir(out_dir):
+                fp = os.path.join(out_dir, fname)
+                if not os.path.isfile(fp):
+                    continue
+                # skip our temp file
+                try:
+                    if os.path.samefile(fp, tmp_path):
+                        continue
+                except Exception:
+                    # fallback to path comparison
+                    if os.path.abspath(fp) == os.path.abspath(tmp_path):
+                        continue
+                if fname.lower().endswith('.pdf'):
+                    try:
+                        os.remove(fp)
+                    except Exception as ex:
+                        delete_errors.append(str(ex))
+        except Exception as ex:
+            delete_errors.append(str(ex))
+
+        # Atomically move temp into the final path. os.replace is atomic on
+        # most platforms and will overwrite the destination if it exists.
+        try:
+            os.replace(tmp_path, out_path)
+        except Exception as e:
+            # Attempt cleanup of temp file and report error
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            return jsonify({"error": f"failed to move temp file into place: {e}", "delete_errors": delete_errors}), 500
+
+        resp = {"path": out_path, "filename": base_name}
+        if delete_errors:
+            resp["delete_errors"] = delete_errors
+        return jsonify(resp), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -643,10 +703,22 @@ def analyze():
     enable_plots = return_plots in ("json", "png", "both")
     log(f"start file={f.filename} excluded={excluded_cols} plots={return_plots} gemini={run_gemini_flag}")
 
+    # Mark running job so the cancel endpoint can target it, and support cooperative cancellation
+    global RUNNING_ANALYSIS_JOB, RUNNING_ANALYSIS_PID, CANCEL_REQUESTED
+    RUNNING_ANALYSIS_JOB = threading.current_thread()
+    RUNNING_ANALYSIS_PID = None
+    # reset any previous cancellation request for this new analysis run
+    CANCEL_REQUESTED = False
+
     try:
         # Preprocess
         df, prep_warnings = load_and_preprocess(f)
         log(f"loaded dataframe shape={df.shape} warnings={len(prep_warnings) if prep_warnings else 0}")
+
+        # Check for cooperative cancellation after preprocessing
+        if CANCEL_REQUESTED:
+            log("analysis canceled after preprocessing")
+            return jsonify({"status": "Canceled"}), 200
 
         # Optimizer & detector
         try:
@@ -666,8 +738,17 @@ def analyze():
         # Use GeminiKeyManager and GeminiConnector for multi-key rotation
         ai_output = None
         if run_gemini_flag:
+            # Check cancellation before starting potentially long Gemini calls
+            if CANCEL_REQUESTED:
+                log("analysis canceled before Gemini call")
+                return jsonify({"status": "Canceled"}), 200
             key_manager = GeminiKeyManager(log=log)
             gemini_connector = GeminiConnector(key_manager=key_manager, log=log)
+            # Allow GeminiConnector to observe cooperative cancellation requests
+            try:
+                gemini_connector.cancel_requested = lambda: CANCEL_REQUESTED
+            except Exception:
+                pass
             ai_output = gemini_connector.summarize_biases(
                 bias_report,
                 dataset_name=f.filename,
@@ -725,6 +806,14 @@ def analyze():
             "detail": str(e),
             "trace": traceback.format_exc(),
         }), 500
+    finally:
+        # Clear running job and cancellation flag so subsequent analyses start clean
+        try:
+            RUNNING_ANALYSIS_JOB = None
+            RUNNING_ANALYSIS_PID = None
+            CANCEL_REQUESTED = False
+        except Exception:
+            pass
 
 
 @app.route("/api/plot/<fig_id>.png", methods=["POST"])
@@ -797,6 +886,8 @@ from typing import Optional
 # Track running analysis jobs (simple global for demo; use a job manager in production)
 RUNNING_ANALYSIS_JOB: Optional[threading.Thread] = None
 RUNNING_ANALYSIS_PID: Optional[int] = None
+# Simple cancellation flag that analysis code can poll to stop work cooperatively
+CANCEL_REQUESTED: bool = False
 
 @app.route("/api/cancel-analysis", methods=["POST"])
 def cancel_analysis():
@@ -804,11 +895,16 @@ def cancel_analysis():
     Cancel the current analysis job, abort running tasks, clean up partial files, and respond with status.
     Expects JSON body: { "job_id": <optional> }
     """
-    global RUNNING_ANALYSIS_JOB, RUNNING_ANALYSIS_PID
+    global RUNNING_ANALYSIS_JOB, RUNNING_ANALYSIS_PID, CANCEL_REQUESTED
     # Attempt to terminate running thread/process
     canceled = False
     cleanup_error = None
     try:
+        # Mark cancellation requested so running analysis can stop cooperatively
+        CANCEL_REQUESTED = True
+        canceled = False
+        cleanup_error = None
+        # If using subprocess for analysis, terminate it
         # If using subprocess for analysis, terminate it
         if RUNNING_ANALYSIS_PID:
             try:
@@ -830,7 +926,7 @@ def cancel_analysis():
                     pass
     except Exception as e:
         cleanup_error = str(e)
-    # Reset job tracking
+    # Reset job tracking (note: cancellation flag remains True until next analysis resets it)
     RUNNING_ANALYSIS_JOB = None
     RUNNING_ANALYSIS_PID = None
     status = "Canceled" if canceled else "No active job"
