@@ -843,7 +843,9 @@ export function UploadPage({
                     <Button
                       variant="outline"
                       onClick={handleViewDistribution}
-                      className="transition-all duration-200"
+                      disabled={isAnalyzing}
+                      aria-disabled={isAnalyzing}
+                      className={`transition-all duration-200 ${isAnalyzing ? 'opacity-60 pointer-events-none' : ''}`}
                     >
                       View Distribution
                     </Button>

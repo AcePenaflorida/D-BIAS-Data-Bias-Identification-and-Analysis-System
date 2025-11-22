@@ -3,6 +3,8 @@
 :root {
   /* Default collapsed sidebar width to avoid initial overlay before sidebar mounts */
   --sidebar-width: 4rem; /* 64px */
+  /* Override default UI font to Poppins (loaded via index.html) */
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   --font-size: 16px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
