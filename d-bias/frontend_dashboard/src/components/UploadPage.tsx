@@ -416,38 +416,36 @@ export function UploadPage({
           <div className="flex-1 max-w-4xl mx-auto">
             {/* Hero / Welcome — rotating headline component */}
             <div className="text-center mb-12">
-                <h1 className="font-extrabold leading-tight">
-                  <span
-                    className="text-slate-900 block leading-tight"
-                    style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
-                  >
-                    AI-Powered Data Bias&nbsp;
-                  </span>
-                  <span
-                    className="block leading-tight"
-                    style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 700, color: '#104ac9' }}
-                  >
-                    {' '}
+              <h1 className="font-extrabold leading-tight">
+                <span
+                  className="text-slate-900 block leading-tight"
+                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 800 }}
+                >
+                  AI-Powered Data Bias&nbsp;
+                </span>
+                <span
+                  className="block leading-tight"
+                  style={{ fontSize: 'clamp(2.5rem, 5vw, 6.5rem)', fontWeight: 700, color: '#104ac9' }}
+                >
+                  {' '}
                   <br />
-                    
-                    <span className="inline-block mx-2">
-                      <RotatingText
-                        texts={['[ Detection ]', '[ Visualization ]', '[ Explanation ]']}
-                        mainClassName="inline-block"
-                        splitBy="words"
-                        staggerFrom={"last"}
-                        initial={{ y: '100%', opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: '-80%', opacity: 0 }}
-                        staggerDuration={0.035}
-                        splitLevelClassName="overflow-hidden pb-0.5 sm:pb-1 md:pb-1"
-                        transition={{ type: 'tween', duration: 0.5, ease: [0.22, 0.8, 0.2, 1] }}
-                        rotationInterval={3000}
-                      />
-                    </span>
-                    
+                  <span className="inline-block mx-2">
+                    <RotatingText
+                      texts={['[ Detection ]', '[ Visualization ]', '[ Explanation ]']}
+                      mainClassName="inline-block"
+                      splitBy="words"
+                      staggerFrom={"last"}
+                      initial={{ y: '100%', opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: '-80%', opacity: 0 }}
+                      staggerDuration={0.035}
+                      splitLevelClassName="overflow-hidden pb-0.5 sm:pb-1 md:pb-1"
+                      transition={{ type: 'tween', duration: 0.5, ease: [0.22, 0.8, 0.2, 1] }}
+                      rotationInterval={3000}
+                    />
                   </span>
-                </h1>
+                </span>
+              </h1>
               <p className="mt-6 text-slate-600 text-base md:text-lg max-w-3xl mx-auto">
                 Detect and analyze bias in your datasets with advanced statistical methods.
                 <br />
@@ -479,6 +477,54 @@ export function UploadPage({
                 </button>
               </div>
             </div>
+
+            {/* Compact Card-Based Hero Section about D-BIAS (uses Google Material Icons) */}
+            <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+            <div
+              className="w-full flex flex-col md:flex-row gap-4 mb-8 justify-center items-stretch"
+              style={{
+                width: '100%',
+                maxWidth: '900px',
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                flexWrap: 'nowrap',
+              }}
+            >
+              <div className="flex-1 min-w-[180px] max-w-xs bg-white rounded-lg shadow-xl border border-slate-100 p-4 flex flex-col justify-center items-center text-center transition-transform hover:scale-[1.03] hover:shadow-2xl" style={{ minHeight: '180px', height: '220px' }}>
+                <div className="flex flex-col justify-center items-center h-full w-full">
+                  <span className="material-icons text-blue-600 text-4xl mb-3" aria-hidden>info</span>
+                  <h2 className="text-lg font-bold text-slate-900 mb-3">About D-BIAS?</h2>
+                  <p className="text-slate-600 text-sm leading-relaxed">AI-powered platform for identifying, visualizing, and explaining bias in tabular datasets.</p>
+                </div>
+              </div>
+              <div className="flex-1 min-w-[180px] max-w-xs bg-white rounded-lg shadow-xl border border-slate-100 p-4 flex flex-col justify-center items-center text-center transition-transform hover:scale-[1.03] hover:shadow-2xl" style={{ minHeight: '180px', height: '220px' }}>
+                <div className="flex flex-col justify-center items-center h-full w-full">
+                  <span className="material-icons text-blue-600 text-4xl mb-3" aria-hidden>query_stats</span>
+                  <h2 className="text-lg font-bold text-slate-900 mb-3">Key Features</h2>
+                  <ul className="text-slate-600 text-sm list-disc list-inside text-center mx-auto max-w-[160px] space-y-1">
+                    <li>Bias detection</li>
+                    <li>Visualizations</li>
+                    <li>Explainability</li>
+                    <li>PDF reports</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="flex-1 min-w-[180px] max-w-xs bg-white rounded-lg shadow-xl border border-slate-100 p-4 flex flex-col justify-center items-center text-center transition-transform hover:scale-[1.03] hover:shadow-2xl" style={{ minHeight: '180px', height: '220px' }}>
+                <div className="flex flex-col justify-center items-center h-full w-full">
+                  <span className="material-icons text-blue-600 text-4xl mb-3" aria-hidden>cloud_upload</span>
+                  <h2 className="text-lg font-bold text-slate-900 mb-3">How It Works</h2>
+                  <p className="text-slate-600 text-sm leading-relaxed">Upload your dataset, validate, analyze, and visualize bias. Download reports.</p>
+                </div>
+              </div>
+            </div>
+            <style>{`
+              @media (max-width: 900px) {
+                .flex-col.md\:flex-row {
+                  flex-direction: column !important;
+                  gap: 1rem !important;
+                }
+              }
+            `}</style>
 
             {/* Upload Area */}
             {/* Dataset preview / distribution chart */}
