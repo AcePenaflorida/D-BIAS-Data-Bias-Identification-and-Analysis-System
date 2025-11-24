@@ -144,7 +144,7 @@ Additionally, consider these dataset aspects in your explanations:
 
 Write your explanation in a **bias-by-bias format**, strictly mapping each explanation to its corresponding [bias_id]. Avoid combining multiple biases into one explanation. Make explanations relatable by including numerical references, comparisons, and real-world examples wherever possible.
 
-**Important:** Even if a bias appears minor or non-existent, provide a complete entry for its [bias_id] with a clear note that no significant issue is detected. This ensures consistent mapping for frontend display.
+**Important:** Even if a bias appears repetitive, minor or non-existent, provide a complete entry for its [bias_id] with a clear note that no significant issue is detected. This ensures consistent mapping for frontend display.
 """
 
         if not use_multi_key:

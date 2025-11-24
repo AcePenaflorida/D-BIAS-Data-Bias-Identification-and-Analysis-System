@@ -454,66 +454,66 @@ def save_analysis_cache(payload: dict, log):
     except Exception as ew:
         log(f"cache_write_error={ew}")
 
-@app.route("/api/render_pdf", methods=["POST"])
-def render_pdf_from_html():
-    """Render posted HTML to a PDF using Playwright (Chromium) and return bytes.
+# @app.route("/api/render_pdf", methods=["POST"])
+# def render_pdf_from_html():
+#     """Render posted HTML to a PDF using Playwright (Chromium) and return bytes.
 
-    Accepts either:
-      - multipart/form-data with field 'html' containing the HTML string
-      - application/json body {"html": "..."}
+#     Accepts either:
+#       - multipart/form-data with field 'html' containing the HTML string
+#       - application/json body {"html": "..."}
 
-    Returns: application/pdf bytes.
-    """
-    html = None
-    try:
-        if request.content_type and request.content_type.startswith("application/json"):
-            data = request.get_json(silent=True) or {}
-            html = data.get("html")
-        else:
-            # form-data: treat 'html' as text field or file
-            if "html" in request.form:
-                html = request.form.get("html")
-            elif "html" in request.files:
-                f = request.files["html"]
-                html = f.read().decode("utf-8", errors="replace")
-    except Exception:
-        html = None
+#     Returns: application/pdf bytes.
+#     """
+#     html = None
+#     try:
+#         if request.content_type and request.content_type.startswith("application/json"):
+#             data = request.get_json(silent=True) or {}
+#             html = data.get("html")
+#         else:
+#             # form-data: treat 'html' as text field or file
+#             if "html" in request.form:
+#                 html = request.form.get("html")
+#             elif "html" in request.files:
+#                 f = request.files["html"]
+#                 html = f.read().decode("utf-8", errors="replace")
+#     except Exception:
+#         html = None
 
-    if not html or not isinstance(html, str) or len(html) < 16:
-        return jsonify({"error": "missing_or_invalid_html"}), 400
+#     if not html or not isinstance(html, str) or len(html) < 16:
+#         return jsonify({"error": "missing_or_invalid_html"}), 400
 
-    try:
-        from playwright.sync_api import sync_playwright
-    except Exception as e:
-        return jsonify({"error": f"playwright_unavailable: {e}"}), 500
+#     try:
+#         from playwright.sync_api import sync_playwright
+#     except Exception as e:
+#         return jsonify({"error": f"playwright_unavailable: {e}"}), 500
 
-    try:
-        # Ensure relative asset links resolve by injecting a <base> tag
-        base_url = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").rstrip("/") + "/"
-        if "<head" in html.lower():
-            # insert <base> right after <head>
-            try:
-                html = re.sub(r"(<head[^>]*>)", r"\1<base href=\"%s\"/>" % base_url, html, count=1, flags=re.IGNORECASE)
-            except Exception:
-                pass
-        else:
-            html = f"<head><base href=\"{base_url}\"/></head>" + html
+#     try:
+#         # Ensure relative asset links resolve by injecting a <base> tag
+#         base_url = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").rstrip("/") + "/"
+#         if "<head" in html.lower():
+#             # insert <base> right after <head>
+#             try:
+#                 html = re.sub(r"(<head[^>]*>)", r"\1<base href=\"%s\"/>" % base_url, html, count=1, flags=re.IGNORECASE)
+#             except Exception:
+#                 pass
+#         else:
+#             html = f"<head><base href=\"{base_url}\"/></head>" + html
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            page = context.new_page()
-            page.set_content(html, wait_until="networkidle")
-            pdf_bytes = page.pdf(format="A4", print_background=True, prefer_css_page_size=True)
-            context.close()
-            browser.close()
-    except Exception as e:
-        return jsonify({"error": f"render_failed: {e}"}), 500
+#         with sync_playwright() as p:
+#             browser = p.chromium.launch(headless=True)
+#             context = browser.new_context()
+#             page = context.new_page()
+#             page.set_content(html, wait_until="networkidle")
+#             pdf_bytes = page.pdf(format="A4", print_background=True, prefer_css_page_size=True)
+#             context.close()
+#             browser.close()
+#     except Exception as e:
+#         return jsonify({"error": f"render_failed: {e}"}), 500
 
-    resp = make_response(pdf_bytes)
-    resp.headers.set("Content-Type", "application/pdf")
-    resp.headers.set("Content-Disposition", "inline; filename=report.pdf")
-    return resp
+#     resp = make_response(pdf_bytes)
+#     resp.headers.set("Content-Type", "application/pdf")
+#     resp.headers.set("Content-Disposition", "inline; filename=report.pdf")
+#     return resp
 
 @app.route("/")
 def index():

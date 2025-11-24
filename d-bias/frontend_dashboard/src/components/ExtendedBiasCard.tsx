@@ -24,9 +24,11 @@ function extractSections(text: string) {
     Fix: [],
   };
   if (!text) return sections;
+  // Normalize asterisks and extra spaces, treat *Section: as Section:
   const lines = text
     .replace(/\r\n?/g, '\n')
     .replace(/[\t\u00A0]/g, ' ')
+    .replace(/\*\s*/g, '') // Remove leading asterisks
     .split(/\n/)
     .map(l => l.trim())
     .filter(Boolean);
@@ -39,7 +41,15 @@ function extractSections(text: string) {
       const label = key.toLowerCase();
       current = (label.startsWith('severity') ? 'Severity Explanation' : label.startsWith('mitigation') || label.startsWith('recommend') ? 'Fix' : (hdr[1] as keyof typeof sections)) as keyof typeof sections;
       const rest = (hdr[2] || '').trim();
+      // Ignore trivial section headers like 'Severity Explanation' with only severity label
+      if (current === 'Severity Explanation' && (!rest || /^(low|moderate|high|critical)$/i.test(rest))) {
+        continue;
+      }
       if (rest) sections[current].push(rest);
+      continue;
+    }
+    // Ignore lines that are just severity labels inside Severity Explanation
+    if (current === 'Severity Explanation' && /^(low|moderate|high|critical)$/i.test(raw)) {
       continue;
     }
     if (current) sections[current].push(raw);
@@ -68,7 +78,8 @@ const formatExplanationBlock = (s: string) => {
   cleaned = cleaned.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   // Convert multiple blank lines into paragraph breaks, single newlines to <br/>
   cleaned = cleaned.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br/>');
-  return `<p>${cleaned}</p>`;
+  // Consistent font and spacing for block explanations
+  return `<p style=\"font-size:15px;line-height:1.7;font-family:inherit;margin-bottom:8px;\">${cleaned}</p>`;
 };
 
 function renderSection(title: string, bodyLines?: string[] | string) {
@@ -76,19 +87,20 @@ function renderSection(title: string, bodyLines?: string[] | string) {
   const lines = Array.isArray(bodyLines) ? bodyLines : String(bodyLines).split(/\n+/);
   const cleaned = lines.map(l => l.trim()).filter(Boolean);
   if (cleaned.length === 0) return null;
+  // Consistent font and spacing for all sections
   const asList = cleaned.every(l => /^[-*•]|^\d+\./.test(l));
   return (
-    <section className="space-y-3">
-      <h5 className="text-slate-800 text-base font-semibold">{title}</h5>
+    <section className="space-y-2">
+      <h5 className="text-slate-800 text-base font-semibold mb-1">{title}</h5>
       {asList ? (
-        <ul className="list-disc ml-6 space-y-2 text-slate-700 text-sm">
+        <ul className="list-disc ml-6 space-y-1 text-slate-700 text-[15px]">
           {cleaned.map((l, i) => (
-            <li key={i} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: formatExplanation(l.replace(/^[-*•]\s*/, '')) }} />
+            <li key={i} className="leading-relaxed" style={{ fontFamily: 'inherit', fontSize: '15px' }} dangerouslySetInnerHTML={{ __html: formatExplanation(l.replace(/^[-*•]\s*/, '')) }} />
           ))}
         </ul>
       ) : (
         cleaned.map((l, i) => (
-          <p key={i} className="text-slate-700 text-sm pl-4 leading-relaxed" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanation(l) }} />
+          <p key={i} className="text-slate-700 text-[15px] pl-4 leading-relaxed mb-1" style={{ textAlign: 'justify', fontFamily: 'inherit' }} dangerouslySetInnerHTML={{ __html: formatExplanation(l) }} />
         ))
       )}
     </section>
@@ -121,13 +133,22 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
   try {
     const sev = (bias.severity || '').toString().trim().toLowerCase();
     const sevText = (filteredSections['Severity Explanation'] || []).join(' ').trim().toLowerCase();
+    // Remove Severity Explanation if it only contains severity label or is empty
     if (!sevText || sevText === sev || /^(low|moderate|high|critical)$/.test(sevText)) {
       filteredSections['Severity Explanation'] = [];
     }
+    // Remove all sections that only contain severity label
+    Object.keys(filteredSections).forEach(key => {
+      const arr = filteredSections[key];
+      if (Array.isArray(arr) && arr.length === 1 && /^(low|moderate|high|critical)$/i.test(arr[0].trim())) {
+        filteredSections[key] = [];
+      }
+    });
   } catch (e) {
     /* ignore and keep sections as-is */
   }
-  const hasStructured = Object.values(filteredSections).some(arr => arr.length);
+  // Only consider as structured if at least one section has non-empty, non-trivial content
+  const hasStructured = Object.values(filteredSections).some(arr => Array.isArray(arr) && arr.length > 0 && arr.some(line => line.trim().length > 0));
 
   const getSeverityColor = (severity?: string) => {
     switch ((severity || '').toLowerCase()) {
@@ -202,15 +223,17 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
       {/* <p className="text-sm text-slate-700 leading-relaxed">{bias.description}</p> */}
       {open && (
         <div className="mt-2 p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-5 text-sm">
-          {hasStructured ? (
+          {hasStructured && (
             <>
-                  {renderSection('Meaning', filteredSections['Meaning'])}
-                  {renderSection('Harm', filteredSections['Harm'])}
-                  {renderSection('Impact', filteredSections['Impact'])}
-                  {renderSection('Severity Explanation', filteredSections['Severity Explanation'])}
-                  {renderSection('Fix', filteredSections['Fix'])}
+              {renderSection('Meaning', filteredSections['Meaning'])}
+              {renderSection('Harm', filteredSections['Harm'])}
+              {renderSection('Impact', filteredSections['Impact'])}
+              {renderSection('Severity Explanation', filteredSections['Severity Explanation'])}
+              {renderSection('Fix', filteredSections['Fix'])}
             </>
-          ) : (
+          )}
+          {/* Always show a block explanation if no structured sections, or if all sections are empty */}
+          {!hasStructured && (
             <div className="text-slate-600 text-sm" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanationBlock(bias.ai_explanation || 'No AI explanation available.') }} />
           )}
         </div>
@@ -229,13 +252,19 @@ export function AiExplanation({ ai_explanation, column, bias_type, severity }: {
     if (!sevText || sevText === sev || /^(low|moderate|high|critical)$/.test(sevText)) {
       filteredSections['Severity Explanation'] = [];
     }
+    Object.keys(filteredSections).forEach(key => {
+      const arr = filteredSections[key];
+      if (Array.isArray(arr) && arr.length === 1 && /^(low|moderate|high|critical)$/i.test(arr[0].trim())) {
+        filteredSections[key] = [];
+      }
+    });
   } catch (e) {
     /* ignore */
   }
-  const hasStructured = Object.values(filteredSections).some(arr => arr.length);
+  const hasStructured = Object.values(filteredSections).some(arr => Array.isArray(arr) && arr.length > 0 && arr.some(line => line.trim().length > 0));
   return (
     <div className="space-y-4 text-sm">
-      {hasStructured ? (
+      {hasStructured && (
         <>
           {renderSection('Meaning', filteredSections['Meaning'])}
           {renderSection('Harm', filteredSections['Harm'])}
@@ -243,7 +272,9 @@ export function AiExplanation({ ai_explanation, column, bias_type, severity }: {
           {renderSection('Severity Explanation', filteredSections['Severity Explanation'])}
           {renderSection('Fix', filteredSections['Fix'])}
         </>
-      ) : (
+      )}
+      {/* Always show a block explanation if no structured sections, or if all sections are empty */}
+      {!hasStructured && (
         <div className="text-slate-600 text-sm" style={{ textAlign: 'justify' }} dangerouslySetInnerHTML={{ __html: formatExplanationBlock(ai_explanation || 'No AI explanation available.') }} />
       )}
     </div>
