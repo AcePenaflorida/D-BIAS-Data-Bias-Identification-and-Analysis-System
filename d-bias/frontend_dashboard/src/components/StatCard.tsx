@@ -21,6 +21,8 @@ interface StatCardProps {
   inlineBadgePosition?: 'title' | 'value';
   /** Children rendered below subtitle */
   children?: ReactNode;
+  /** Optional class to override value font sizing */
+  valueClassName?: string;
 }
 
 export function StatCard({
@@ -37,6 +39,7 @@ export function StatCard({
   inlineBadge = false,
   inlineBadgePosition = 'title',
   children,
+  valueClassName,
 }: StatCardProps) {
   const getVariantClasses = () => {
     switch (variant) {
@@ -64,7 +67,8 @@ export function StatCard({
   const titleCls = compact ? 'text-slate-600 text-xs mb-1' : 'text-slate-600 text-sm mb-2';
   // Title class variant for inline layout (remove bottom margin so it vertically centers with addons)
   const titleInlineCls = titleCls.replace(/mb-\d+/, 'mb-0');
-  const valueCls = compact ? `text-xl ${getValueColor()}` : `text-2xl ${getValueColor()}`;
+  const defaultValueSize = compact ? 'text-xl' : 'text-2xl';
+  const valueCls = `${valueClassName ?? defaultValueSize} ${getValueColor()}`;
 
   return (
     <Card className={`relative ${pad} ${getVariantClasses()} ${className || ''}`}>

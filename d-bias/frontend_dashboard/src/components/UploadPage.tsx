@@ -389,6 +389,11 @@ export function UploadPage({
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<AnalysisResult | null>(null);
 
+  function truncateTitle(s?: string, max = 10) {
+    if (!s) return '';
+    return s.length > max ? s.slice(0, max) + '...' : s;
+  }
+
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -745,7 +750,7 @@ export function UploadPage({
                   {uploadInfo ? (
                     <div className="flex flex-wrap items-center gap-4 mt-2 text-base text-slate-700">
                       <span className="font-semibold text-blue-700 flex items-center gap-2">
-                        <FileSpreadsheet className="h-5 w-5" /> {file?.name}
+                        <FileSpreadsheet className="h-5 w-5" /> {truncateTitle(file?.name)}
                       </span>
                       <span className="font-semibold text-slate-600 flex items-center gap-2">
                         <span className="bg-slate-100 rounded px-2 py-1 text-xs font-medium">Rows: {uploadInfo.rows}</span>
