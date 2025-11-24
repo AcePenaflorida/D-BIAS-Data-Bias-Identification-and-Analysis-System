@@ -128,6 +128,19 @@ function renderMetaBullets(label: string, items: Array<{ label: string; value?: 
 export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
   const [open, setOpen] = useState(false);
   const sections = extractSections(bias.ai_explanation || '');
+  // Adaptive bias type definitions
+  const biasTypeDefinitions: Record<string, string> = {
+    'Missing Data Bias': 'A feature has a significant portion of missing values, which can distort analysis or model training.',
+    'Systematic Missingness': 'Missing values depend on another feature, indicating potential sampling or reporting bias.',
+    'Categorical Imbalance': 'One category dominates a feature, reducing representation of other groups.',
+    'Intersectional Bias': 'Certain combinations of categories across features are overrepresented, masking diversity.',
+    'Numeric Correlation Bias': 'Two numeric features are strongly correlated, inflating their importance.',
+    'Outlier Bias': 'Extreme values in a feature skew statistics and model predictions.',
+    'Target Association Bias': 'A feature is strongly linked to the target, possibly reflecting confounding.',
+    'Fairness Disparity': 'Outcomes differ significantly between groups, indicating potential unfairness.',
+    'Target Correlation Bias': 'A numeric feature is highly correlated with a numeric target, reducing generalizability.'
+  };
+
   // Filter out trivial Severity Explanation entries that only repeat the severity label
   const filteredSections = { ...sections } as Record<string, string[]>;
   try {
@@ -196,7 +209,9 @@ export function ExtendedBiasCard({ bias }: ExtendedBiasCardProps) {
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start" sideOffset={12} className="max-w-sm">
                   <p className="text-xs text-slate-600 mb-1">What does this bias mean?</p>
-                  <p className="text-sm text-slate-800">{(bias as any).definition || bias.ai_explanation || bias.description}</p>
+                  <p className="text-sm text-slate-800">
+                    {biasTypeDefinitions[bias.bias_type] || (bias as any).definition || bias.ai_explanation || bias.description}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
