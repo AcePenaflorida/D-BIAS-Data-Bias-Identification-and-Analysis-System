@@ -149,15 +149,16 @@ export function Dashboard({
                 showProgress
                   showDonut
                 titleAddon={
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-sm leading-none ${getFairnessColor(result.fairnessLabel)}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs leading-none ${getFairnessColor(result.fairnessLabel)}`}>
                     {result.fairnessLabel}
                   </span>
                 }
-                />
+                  valueClassName="text-xl"
+                  />
               <StatCard
                 title="Bias Risk Summary"
                 titleAddon={
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-sm leading-none ${getRiskColor(result.biasRisk)}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs leading-none ${getRiskColor(result.biasRisk)}`}>
                     {result.biasRisk}
                   </span>
                 }

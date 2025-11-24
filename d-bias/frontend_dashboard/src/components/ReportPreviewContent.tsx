@@ -50,6 +50,10 @@ function RenderAIExplanation({ text }: { text: string }) {
 }
 
 export function ReportPreviewContent({ result }: Props) {
+  function truncateTitle(s?: string, max = 10) {
+    if (!s) return '';
+    return s.length > max ? s.slice(0, max) + '...' : s;
+  }
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
@@ -60,7 +64,7 @@ export function ReportPreviewContent({ result }: Props) {
           </span>
           <span className="text-slate-900 text-xl"><span className="font-semibold">D-BIAS</span> <span className="font-normal">Analysis Report</span></span>
         </h1>
-        <p className="text-slate-600 text-sm font-medium">{result.datasetName}</p>
+  <p className="text-slate-600 text-sm font-medium">{truncateTitle(result.datasetName)}</p>
         <p className="text-slate-500 text-xs mt-1">Generated on {new Date(result.uploadDate).toLocaleDateString()}</p>
       </div>
 
