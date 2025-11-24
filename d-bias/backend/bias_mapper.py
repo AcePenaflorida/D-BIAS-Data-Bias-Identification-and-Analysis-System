@@ -7,7 +7,7 @@ def clean_last_bias_text(text: str) -> str:
     # Remove any section headers that should not be part of the last bias
     # These are usually bolded or start with certain phrases
     section_markers = [
-        "** Overall Reliability Assessment", "** Fairness & Ethical Implications",
+        "** Overall Reliability Assessment", "** Fairness & Ethical Implications", 
         "** Concluding Summary", "** Actionable Recommendations",
         "### **Overall Summary and Recommendations**",
         "**Overall Reliability Assessment:**", "**Fairness & Ethical Implications:**",
@@ -19,6 +19,11 @@ def clean_last_bias_text(text: str) -> str:
         "\n\n---",
         "\n---",
         "--- ### Overall Assessment and Recommendations",
+        "\n\n---\n### Final Assessment",
+        "\n",
+        "\n\n"
+
+
     ]
     # Remove everything after the first occurrence of any marker
     for marker in section_markers:
@@ -96,29 +101,20 @@ def parse_bias_report(raw_bias_report):
 
 
 def map_bias_explanations(bias_report, ai_output):
-    """Map bias IDs to AI explanations, handling messy formatting.
-
-    This parser tolerates bracketed IDs like **[bias_0001]:** and plain forms like bias_0001:
-    """
+    """Map bias IDs to AI explanations, ensuring each block is strictly isolated."""
     ai_output = normalize_text(ai_output or "")
 
-    # Pattern to split on bias headers, allowing optional [ ] and spaces before colon
-    split_pat = re.compile(r"(?:\b\[?\s*bias_(\d{4})\s*\]?\s*[:：])", re.IGNORECASE)
-    parts = re.split(split_pat, ai_output)
-
-    ai_dict, current_id, buffer = {}, None, []
-    for p in parts:
-        if p is None:
-            continue
-        if re.fullmatch(r"\d{4}", str(p) or ""):
-            if current_id and buffer:
-                ai_dict[f"bias_{current_id}"] = "\n".join(buffer).strip()
-            current_id, buffer = p, []
-        else:
-            buffer.append(p)
-    if current_id and buffer:
-        ai_dict[f"bias_{current_id}"] = "\n".join(buffer).strip()
-
+    # Strict pattern: matches bias headers at the start of a line (optionally bracketed)
+    split_pat = re.compile(r"^\s*\[?bias_(\d{4})\]?\s*[:：]\s*", re.MULTILINE | re.IGNORECASE)
+    matches = list(split_pat.finditer(ai_output))
+    ai_dict = {}
+    for idx, match in enumerate(matches):
+        bias_id = f"bias_{match.group(1)}"
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(ai_output)
+        block = ai_output[start:end].strip()
+        ai_dict[bias_id] = block
+    # Map explanations to bias_report
     mapped = {}
     for bias in bias_report:
         bid = bias.get("bias_id")
