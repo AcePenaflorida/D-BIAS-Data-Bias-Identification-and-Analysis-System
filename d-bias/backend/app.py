@@ -440,6 +440,11 @@ def apply_bias_mapping_to_response(response: dict, bias_report, ai_output, repor
 def save_analysis_cache(payload: dict, log):
     """Persist payload to the analysis cache path, preserving logging semantics."""
     try:
+        # Allow administrators to disable local JSON cache writes via env var.
+        # Setting ALLOW_LOCAL_SAVE=false will skip writing analysis_response.json.
+        if os.getenv("ALLOW_LOCAL_SAVE", "true").lower() not in ("1", "true", "yes"):
+            log("local_save_disabled_by_server_config: skipping analysis cache write")
+            return
         cache_dir = get_cache_dir()
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = get_cache_file()
@@ -546,6 +551,10 @@ def save_pdf_to_cache():
     Returns JSON with {"path": <absolute_path>, "filename": <name>} on success.
     """
     try:
+        # Server-side guard: allow disabling local saves via env var.
+        # Set ALLOW_LOCAL_SAVE=false to reject attempts to write files to disk.
+        if os.getenv("ALLOW_LOCAL_SAVE", "true").lower() not in ("1", "true", "yes"):
+            return jsonify({"error": "local_save_disabled_by_server_config"}), 403
         if "file" not in request.files:
             return jsonify({"error": "no file part"}), 400
         f = request.files["file"]

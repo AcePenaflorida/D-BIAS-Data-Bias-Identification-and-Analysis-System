@@ -77,6 +77,8 @@ export default function App() {
   const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
   const BUCKET_JSON = (import.meta as any).env?.VITE_SUPABASE_BUCKET_ANALYSIS_JSON || 'analysis_json';
   const BUCKET_PDF = (import.meta as any).env?.VITE_SUPABASE_BUCKET_PDF_BIAS_REPORTS || 'pdf_bias_reports';
+  // Allow opting out of saving a local copy on the backend. Default: false (don't save locally).
+  const ENABLE_LOCAL_SAVE = String((import.meta as any).env?.VITE_SAVE_LOCAL_COPY ?? 'false').toLowerCase() === 'true';
 
   // Build a full-quality HTML snapshot (identical to Preview) — optional server-side rendering path
   async function generateAnalysisHtmlSnapshot(result: AnalysisResult): Promise<Blob> {
@@ -271,17 +273,20 @@ export default function App() {
     }
     if (!pdfBlob) throw new Error('PDF generation failed');
 
-    // 1a) Save PDF to local program_generated_files via backend endpoint
-    try {
-      const fd = new FormData();
-      const ts = new Date(result.uploadDate || Date.now()).toISOString().replace(/[:.]/g, '-');
-      const base = sanitizePathPart(result.datasetName || 'dataset');
-      const localName = `dbias_report_${ts}_${base}.pdf`;
-      fd.append('file', pdfBlob, localName);
-      fd.append('filename', localName);
-      await fetch(`${BACKEND_URL}/api/save_pdf`, { method: 'POST', body: fd });
-    } catch {
-      // Non-fatal: local write failed; continue with Supabase uploads
+    // 1a) Optionally save PDF to local program_generated_files via backend endpoint
+    if (ENABLE_LOCAL_SAVE) {
+      try {
+        const fd = new FormData();
+        const ts = new Date(result.uploadDate || Date.now()).toISOString().replace(/[:.]/g, '-');
+        const base = sanitizePathPart(result.datasetName || 'dataset');
+        const localName = `dbias_report_${ts}_${base}.pdf`;
+        fd.append('file', pdfBlob, localName);
+        fd.append('filename', localName);
+        // Fire-and-forget but await to allow backend to return early errors
+        await fetch(`${BACKEND_URL}/api/save_pdf`, { method: 'POST', body: fd });
+      } catch {
+        // Non-fatal: local write failed or disabled; continue with Supabase uploads
+      }
     }
 
     // 2) Fetch cached analysis JSON
