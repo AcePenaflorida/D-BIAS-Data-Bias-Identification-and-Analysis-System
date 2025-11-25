@@ -11,6 +11,7 @@ import { generateFullQualityPDF } from './services/reportPdf';
 import { toast } from 'sonner';
 import ReportPreviewContent from './components/ReportPreviewContent';
 import { supabase } from './lib/supabase';
+import React from "react";
 
 export interface AnalysisResult {
   id: string;
@@ -74,7 +75,25 @@ export default function App() {
   const [autoSavePending, setAutoSavePending] = useState<AnalysisResult | null>(null);
 
   // Buckets and backend URL
-  const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
+  // const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  // On app load, ping backend to warm up service and check connectivity
+  React.useEffect(() => {
+    // Safe placeholder call to warm up backend
+    fetch(`${BACKEND_URL}/api/ping`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.status === 'ok') {
+          console.log(`✅ Backend warmup successful: ${BACKEND_URL}/api/ping`);
+        } else {
+          console.warn(`⚠️ Backend /api/ping responded with unexpected data:`, data);
+        }
+      })
+      .catch(err => {
+        console.error(`❌ Failed to warm up backend: ${BACKEND_URL}/api/ping`, err);
+      });
+  }, [BACKEND_URL]);
   const BUCKET_JSON = (import.meta as any).env?.VITE_SUPABASE_BUCKET_ANALYSIS_JSON || 'analysis_json';
   const BUCKET_PDF = (import.meta as any).env?.VITE_SUPABASE_BUCKET_PDF_BIAS_REPORTS || 'pdf_bias_reports';
   // Allow opting out of saving a local copy on the backend. Default: false (don't save locally).
@@ -201,75 +220,12 @@ export default function App() {
 
   // Save analysis flow: generate 1:1 HTML snapshot if available, render to PDF via backend, save locally, upload, then insert DB row
   async function saveAnalysisFlow(result: AnalysisResult) {
-    // 1) Generate PDF
-    // Suppress toast: Generating PDF
+    // 1) Generate PDF (client-side only)
     let pdfBlob: Blob | null = null;
     try {
-      // Prefer the hidden preview DOM (always mounted) for exact 1:1 server render
-      const previewEl = (document.querySelector('[data-pdf-preview-root][data-hidden-preview="true"]')
-        || document.querySelector('[data-pdf-preview-root]')) as HTMLElement | null;
-      if (previewEl) {
-        const { generateFullQualityPDF, buildPreviewHtml } = await import('./services/reportPdf');
-        // Build HTML snapshot from the same content
-        const clone = previewEl.cloneNode(true) as HTMLElement;
-        clone.querySelectorAll('button').forEach(b => b.remove());
-        // Apply the same page-break heuristics as Preview
-        const sections = Array.from(clone.querySelectorAll('section'));
-        let prev = '';
-        sections.forEach((sec, idx) => {
-          const headingLower = (sec.querySelector('h2')?.textContent || '').trim().toLowerCase();
-          if (idx > 0) {
-            const isRecommendations = headingLower === 'recommendations';
-            const isRecToConclusion = prev === 'recommendations' && headingLower === 'conclusion';
-            const isVisualizations = sec.classList.contains('visualizations-section');
-            if (!isRecommendations && !isRecToConclusion && !isVisualizations) {
-              sec.classList.add('page-break');
-              if ((sec.textContent || '').length < 200) sec.classList.remove('page-break');
-            }
-          }
-          prev = headingLower;
-        });
-        const { buildPreviewHtml: buildHtml, inlineImagesInHtml } = await import('./services/reportPdf');
-        let html = buildHtml(result, clone.innerHTML);
-        try {
-          // Inline images (logo and any other external images) so server renderer receives self-contained HTML
-          html = await inlineImagesInHtml(html);
-        } catch {
-          // if inlining fails, continue with the original HTML — pdfMake fallback will still include logo
-        }
-        const tryServerRender = async (): Promise<Blob> => {
-          let lastErr: any = null;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              const fd = new FormData();
-              fd.append('html', new Blob([html], { type: 'text/html' }), 'report.html');
-              const res = await fetch(`${BACKEND_URL}/api/render_pdf`, { method: 'POST', body: fd });
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              return await res.blob();
-            } catch (e: any) {
-              lastErr = e;
-              if (attempt < 1) {
-                await new Promise(r => setTimeout(r, 700));
-                continue;
-              }
-            }
-          }
-          throw lastErr || new Error('render_pdf failed');
-        };
-        try {
-          pdfBlob = await tryServerRender();
-        } catch (e: any) {
-          toast.error('Server PDF render failed, using fallback');
-          throw e; // handled by outer catch to trigger fallback path
-        }
-      }
+      pdfBlob = await generatePdfBlobForUpload(result);
     } catch (e) {
-      // Fallback to pdfmake generator if preview DOM is not available or server render failed
-      pdfBlob = await generatePdfBlobForUpload(result);
-    }
-    // If preview root was not found (no exception thrown), ensure we still fall back
-    if (!pdfBlob) {
-      pdfBlob = await generatePdfBlobForUpload(result);
+      throw new Error('PDF generation failed');
     }
     if (!pdfBlob) throw new Error('PDF generation failed');
 

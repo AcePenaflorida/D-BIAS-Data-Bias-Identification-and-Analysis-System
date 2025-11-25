@@ -1,3 +1,4 @@
+
 # backend/app.py
 from flask import Flask, request, jsonify, make_response
 import pandas as pd
@@ -523,6 +524,11 @@ def save_analysis_cache(payload: dict, log):
 def index():
     return jsonify({"message": "D-BIAS backend running"}), 200  
 
+# --- Placeholder warmup endpoint ---
+@app.route("/api/ping", methods=["GET"])
+def api_ping():
+    """Lightweight endpoint for frontend warmup/cold start prevention."""
+    return jsonify({"status": "ok", "message": "Backend is awake."}), 200
 
 @app.route("/api/analysis/latest", methods=["GET"])
 def latest_analysis():

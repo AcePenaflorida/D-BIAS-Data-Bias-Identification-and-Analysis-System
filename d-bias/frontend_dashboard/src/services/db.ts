@@ -154,7 +154,13 @@ export async function loadSavedAnalyses(): Promise<AnalysisResult[]> {
     if (!href) continue; // row was saved but JSON upload failed
     try {
       const res = await fetch(href, { cache: 'no-store' });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        // Log missing/deleted file once for debugging, but skip to avoid log spam
+        if (res.status === 400 || res.status === 404) {
+          console.warn(`[loadSavedAnalyses] Skipping missing/deleted Supabase file: ${href} (status ${res.status})`);
+        }
+        continue;
+      }
       const data = await res.json();
       if (data && typeof data === 'object') {
         const datasetName = ((r as any).description || (data?.dataset_name) || 'saved_analysis.csv').toString();
@@ -163,7 +169,10 @@ export async function loadSavedAnalyses(): Promise<AnalysisResult[]> {
         mapped.id = mapped.id || `analysis-${(r as any).id}`;
         results.push(mapped);
       }
-    } catch {}
+    } catch (err) {
+      // Log fetch error once for debugging, but skip to avoid log spam
+      console.warn(`[loadSavedAnalyses] Error loading Supabase file: ${href}`, err);
+    }
   }
   // Sort newest first by uploadDate if present
   results.sort((a, b) => +new Date(b.uploadDate || 0) - +new Date(a.uploadDate || 0));

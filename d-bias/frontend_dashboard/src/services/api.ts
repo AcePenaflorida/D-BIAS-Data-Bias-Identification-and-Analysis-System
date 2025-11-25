@@ -10,7 +10,8 @@ export async function cancelAnalysis(): Promise<{ status: string; cleanup_error?
 // Frontend service to call backend analyze API with retry and response mapping
 import type { AnalysisResult } from '../App';
 
-const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
+// const BACKEND_URL = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const SUPABASE_BUCKET_ANALYSIS_JSON = (import.meta as any).env?.VITE_SUPABASE_BUCKET_ANALYSIS_JSON || 'analysis_json';
 const SUPABASE_BUCKET_PDF_BIAS_REPORTS = (import.meta as any).env?.VITE_SUPABASE_BUCKET_PDF_BIAS_REPORTS || 'pdf_bias_reports';
 
