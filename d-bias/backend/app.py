@@ -944,6 +944,9 @@ def cancel_analysis():
         resp["cleanup_error"] = cleanup_error
     return jsonify(resp), 200
 
+import judoscale_flask
+judoscale_flask.init_app(app)
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     # Disable the reloader & debug for stability during automated tests to avoid connection resets.
