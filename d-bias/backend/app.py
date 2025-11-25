@@ -944,7 +944,7 @@ def cancel_analysis():
         resp["cleanup_error"] = cleanup_error
     return jsonify(resp), 200
 
-import judoscale_flask
+import judoscale
 judoscale_flask.init_app(app)
 
 if __name__ == "__main__":

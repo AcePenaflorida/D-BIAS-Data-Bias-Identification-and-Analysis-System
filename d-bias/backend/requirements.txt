@@ -16,4 +16,3 @@ requests
 redis
 rq
 judoscale
-judoscale_flask
