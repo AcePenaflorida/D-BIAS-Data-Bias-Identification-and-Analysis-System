@@ -945,7 +945,7 @@ def cancel_analysis():
     return jsonify(resp), 200
 
 import judoscale
-judoscale_flask.init_app(app)
+judoscale.init_app(app)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
