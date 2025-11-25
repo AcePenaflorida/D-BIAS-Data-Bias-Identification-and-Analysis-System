@@ -33,7 +33,11 @@ from preprocessing import load_and_preprocess, validate_dataset
 load_dotenv()
 print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
+
+from judoscale.flask import Judoscale
+
 app = Flask(__name__)
+judoscale = Judoscale(app)
 
 # Allow slightly larger uploads and set JSON config if needed
 app.config.setdefault("MAX_CONTENT_LENGTH", 50 * 1024 * 1024)  # 50MB safeguard
