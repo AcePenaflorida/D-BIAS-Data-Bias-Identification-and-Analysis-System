@@ -16,3 +16,5 @@ requests
 redis
 rq
 judoscale
+flask-limiter
+flask-wtf

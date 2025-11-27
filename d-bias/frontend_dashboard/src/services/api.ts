@@ -241,6 +241,10 @@ export async function analyzeDataset(
   opts: { runGemini: boolean; returnPlots: 'none' | 'json' | 'png' | 'both' } = { runGemini: true, returnPlots: 'json' },
   signal?: AbortSignal,
 ): Promise<AnalysisResult> {
+  // File type validation: only allow CSV
+  if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+    throw new Error('Only CSV files are allowed for analysis.');
+  }
   const form = new FormData();
   form.append('file', file);
   form.append('run_gemini', String(opts.runGemini));
@@ -393,6 +397,10 @@ export async function deleteProfile(id: string | undefined): Promise<void> {
 
 // Upload a dataset for quick validation/metadata without full analysis
 export async function uploadDataset(file: File): Promise<UploadInfo> {
+  // File type validation: only allow CSV
+  if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+    throw new Error('Only CSV files are allowed for upload.');
+  }
   const form = new FormData();
   form.append('file', file);
   const res = await fetchWithRetry(
