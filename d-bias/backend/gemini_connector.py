@@ -58,14 +58,43 @@ class GeminiConnector:
         self.api_key = api_key
         self.key_manager = key_manager
         self.log = log or (lambda msg: print(f"[GeminiConnector] {msg}"))
-        # Optional callable returning True when a cancel has been requested.
-        # Callers (e.g. app.analyze) may set `connector.cancel_requested = lambda: CANCEL_REQUESTED`.
         self.cancel_requested = lambda: False
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel("models/gemini-2.5-pro")
-        else:
+
+        if not api_key:
+            self.log("No API key provided. Gemini is disabled.")
             self.model = None
+            return
+
+        # Configure API
+        genai.configure(api_key=api_key)
+
+        # Ordered fallback list (most capable → least capable)
+        MODEL_CANDIDATES = [
+            "models/gemini-3.0-pro",
+            "models/gemini-3.0-flash",
+            "models/gemini-2.5-pro",
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash",
+        ]
+
+        self.model = None
+
+        for model_name in MODEL_CANDIDATES:
+            try:
+                self.log(f"Trying model: {model_name}")
+                model = genai.GenerativeModel(model_name)
+
+                # Simple test call (very cheap) to confirm it works
+                model.generate_content("ping")
+                self.model = model
+                self.log(f"Successfully initialized model: {model_name}")
+                break
+
+            except Exception as e:
+                self.log(f"Model {model_name} failed: {e}")
+
+        if not self.model:
+            self.log("ERROR: No Gemini model could be initialized. Check your API key or quota.")
 
     def _extract_text(self, response):
         if response is None:
