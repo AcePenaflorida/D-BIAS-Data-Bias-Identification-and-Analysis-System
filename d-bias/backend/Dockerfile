@@ -20,5 +20,8 @@ COPY . .
 # Expose port (adjust if needed)
 EXPOSE 5000
 
+# Healthcheck: ping the backend API
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 CMD curl --fail http://localhost:5000/api/ping || exit 1
+
 # Start the Flask app
 CMD ["python", "app.py"]

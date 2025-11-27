@@ -35,10 +35,74 @@ load_dotenv()
 print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
 
+
+# Rate limiting
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 from judoscale.flask import Judoscale
+
 
 app = Flask(__name__)
 judoscale = Judoscale(app)
+
+# --- CSRF Protection ---
+from flask_wtf import CSRFProtect
+csrf = CSRFProtect(app)
+
+# --- Secure Cookie Settings ---
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # Only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,    # Prevent JS access to cookies
+    SESSION_COOKIE_SAMESITE='Strict' # Prevent cross-site cookie sending
+)
+
+# --- Content Security Policy (CSP) ---
+@app.after_request
+def set_csp_headers(response):
+    # Adjust CSP as needed for your frontend features
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+        "img-src 'self' data: blob: https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.supabase.io https://*.supabase.co https://cdn.jsdelivr.net; "
+        "frame-src 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "manifest-src 'self'; "
+        "media-src 'self' blob:; "
+        "worker-src 'self' blob:; "
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+    # --- HTTP Strict Transport Security (HSTS) ---
+    # Only set HSTS if running over HTTPS
+    if request.is_secure or request.headers.get('X-Forwarded-Proto', '').lower() == 'https':
+        # 1 year max-age, include subdomains, preload for browsers
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+    # --- X-Frame-Options Header ---
+    response.headers['X-Frame-Options'] = 'DENY'
+    # --- X-Content-Type-Options Header ---
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # --- Referrer-Policy Header ---
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+# Global rate limit: 100 requests per hour per IP
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per hour"],
+)
+
+# Allowed file extensions for uploads
+ALLOWED_EXTENSIONS = {"csv"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # Allow slightly larger uploads and set JSON config if needed
 app.config.setdefault("MAX_CONTENT_LENGTH", 50 * 1024 * 1024)  # 50MB safeguard
@@ -49,7 +113,7 @@ frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 if CORS:
     # In dev, allow any localhost origin to avoid port mismatch issues (5173/5174/etc.)
     # For production, set FRONTEND_ORIGIN explicitly and tighten this.
-    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    CORS(app, resources={r"/api/*": {"origins": frontend_origin}}, supports_credentials=True)
 else:
     print("[WARN] flask-cors not installed; cross-origin requests from frontend may fail. Install with 'pip install flask-cors'.")
 
@@ -656,12 +720,13 @@ def upload():
     Accepts multipart/form-data with key 'file' (CSV).
     Returns basic dataset info: rows, columns, sample columns list.
     """
+
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
 
     f = request.files["file"]
-    if f.filename == "":
-        return jsonify({"error": "no selected file"}), 400
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
     try:
         df, prep_warnings = load_and_preprocess(f)
@@ -695,6 +760,7 @@ def upload():
     return jsonify(make_json_serializable(upload_resp)), 200
 
 @app.route("/api/analyze", methods=["POST"])
+@limiter.limit("5 per minute")  # Limit: 5 requests per minute per IP
 def analyze():
     """Robust analysis endpoint with diagnostic logging & failure shielding.
 
@@ -712,8 +778,8 @@ def analyze():
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
     f = request.files["file"]
-    if f.filename == "":
-        return jsonify({"error": "no selected file"}), 400
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
     excluded = request.form.get("excluded", os.getenv("EXCLUDED_COLUMNS", "id,timestamp"))
     excluded_cols = [c.strip() for c in excluded.split(",") if c.strip()]
