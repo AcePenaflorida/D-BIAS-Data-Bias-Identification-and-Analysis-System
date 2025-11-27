@@ -735,20 +735,12 @@ def upload():
     Returns basic dataset info: rows, columns, sample columns list.
     """
 
-    # Diagnostic logs for incoming request to help debug upload 500s
-    try:
-        content_length = request.headers.get("Content-Length")
-        content_type = request.headers.get("Content-Type")
-        origin = request.headers.get("Origin")
-        req_id = request.headers.get('x-railway-request-id') or request.headers.get('X-Request-ID')
-        print(f"[upload] incoming remote={request.remote_addr} content_length={content_length} content_type={content_type} origin={origin} request_id={req_id}")
-    except Exception:
-        pass
-
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
 
     f = request.files["file"]
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
     if f.filename == "" or not allowed_file(f.filename):
         return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
@@ -803,6 +795,8 @@ def analyze():
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
     f = request.files["file"]
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
     if f.filename == "" or not allowed_file(f.filename):
         return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
