@@ -110,10 +110,23 @@ app.config.setdefault("JSONIFY_PRETTYPRINT_REGULAR", False)
 
 # Initialize CORS if library available
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+allow_all = os.getenv("ALLOW_ALL_ORIGINS", "false").lower() in ("1", "true", "yes")
 if CORS:
-    # In dev, allow any localhost origin to avoid port mismatch issues (5173/5174/etc.)
-    # For production, set FRONTEND_ORIGIN explicitly and tighten this.
-    CORS(app, resources={r"/api/*": {"origins": frontend_origin}}, supports_credentials=True)
+    try:
+        # Support comma-separated list in FRONTEND_ORIGIN (e.g. "http://localhost:5173,http://localhost:3000")
+        origins_list = [o.strip() for o in frontend_origin.split(",") if o.strip()]
+        origins = origins_list[0] if len(origins_list) == 1 else origins_list
+
+        if allow_all:
+            # For quick development/testing only: enable wildcard origin (no credentials)
+            CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
+            print("[INFO] Flask-Cors enabled with wildcard '*' (ALLOW_ALL_ORIGINS=true). Credentials disabled.")
+        else:
+            # Use the provided origins (string or list). Keep credentials support if needed.
+            CORS(app, resources={r"/api/*": {"origins": origins}}, supports_credentials=True)
+            print(f"[INFO] Flask-Cors enabled. FRONTEND_ORIGIN={frontend_origin} -> parsed={origins}")
+    except Exception as _cros_e:
+        print(f"[ERROR] Failed initializing Flask-Cors: {_cros_e}")
 else:
     print("[WARN] flask-cors not installed; cross-origin requests from frontend may fail. Install with 'pip install flask-cors'.")
 
