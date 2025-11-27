@@ -35,10 +35,74 @@ load_dotenv()
 print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
 
+
+# Rate limiting
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 from judoscale.flask import Judoscale
+
 
 app = Flask(__name__)
 judoscale = Judoscale(app)
+
+# --- CSRF Protection ---
+from flask_wtf import CSRFProtect
+csrf = CSRFProtect(app)
+
+# --- Secure Cookie Settings ---
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # Only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,    # Prevent JS access to cookies
+    SESSION_COOKIE_SAMESITE='Strict' # Prevent cross-site cookie sending
+)
+
+# --- Content Security Policy (CSP) ---
+@app.after_request
+def set_csp_headers(response):
+    # Adjust CSP as needed for your frontend features
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+        "img-src 'self' data: blob: https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.supabase.io https://*.supabase.co https://cdn.jsdelivr.net; "
+        "frame-src 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "manifest-src 'self'; "
+        "media-src 'self' blob:; "
+        "worker-src 'self' blob:; "
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+    # --- HTTP Strict Transport Security (HSTS) ---
+    # Only set HSTS if running over HTTPS
+    if request.is_secure or request.headers.get('X-Forwarded-Proto', '').lower() == 'https':
+        # 1 year max-age, include subdomains, preload for browsers
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+    # --- X-Frame-Options Header ---
+    response.headers['X-Frame-Options'] = 'DENY'
+    # --- X-Content-Type-Options Header ---
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # --- Referrer-Policy Header ---
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+# Global rate limit: 100 requests per hour per IP
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per hour"],
+)
+
+# Allowed file extensions for uploads
+ALLOWED_EXTENSIONS = {"csv"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # Allow slightly larger uploads and set JSON config if needed
 app.config.setdefault("MAX_CONTENT_LENGTH", 50 * 1024 * 1024)  # 50MB safeguard
@@ -46,10 +110,23 @@ app.config.setdefault("JSONIFY_PRETTYPRINT_REGULAR", False)
 
 # Initialize CORS if library available
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+allow_all = os.getenv("ALLOW_ALL_ORIGINS", "false").lower() in ("1", "true", "yes")
 if CORS:
-    # In dev, allow any localhost origin to avoid port mismatch issues (5173/5174/etc.)
-    # For production, set FRONTEND_ORIGIN explicitly and tighten this.
-    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    try:
+        # Support comma-separated list in FRONTEND_ORIGIN (e.g. "http://localhost:5173,http://localhost:3000")
+        origins_list = [o.strip() for o in frontend_origin.split(",") if o.strip()]
+        origins = origins_list[0] if len(origins_list) == 1 else origins_list
+
+        if allow_all:
+            # For quick development/testing only: enable wildcard origin (no credentials)
+            CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
+            print("[INFO] Flask-Cors enabled with wildcard '*' (ALLOW_ALL_ORIGINS=true). Credentials disabled.")
+        else:
+            # Use the provided origins (string or list). Keep credentials support if needed.
+            CORS(app, resources={r"/api/*": {"origins": origins}}, supports_credentials=True)
+            print(f"[INFO] Flask-Cors enabled. FRONTEND_ORIGIN={frontend_origin} -> parsed={origins}")
+    except Exception as _cros_e:
+        print(f"[ERROR] Failed initializing Flask-Cors: {_cros_e}")
 else:
     print("[WARN] flask-cors not installed; cross-origin requests from frontend may fail. Install with 'pip install flask-cors'.")
 
@@ -651,17 +728,29 @@ def save_pdf_to_cache():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/upload", methods=["POST"])
+@csrf.exempt
 def upload():
     """
     Accepts multipart/form-data with key 'file' (CSV).
     Returns basic dataset info: rows, columns, sample columns list.
     """
+
+    # Diagnostic logs for incoming request to help debug upload 500s
+    try:
+        content_length = request.headers.get("Content-Length")
+        content_type = request.headers.get("Content-Type")
+        origin = request.headers.get("Origin")
+        req_id = request.headers.get('x-railway-request-id') or request.headers.get('X-Request-ID')
+        print(f"[upload] incoming remote={request.remote_addr} content_length={content_length} content_type={content_type} origin={origin} request_id={req_id}")
+    except Exception:
+        pass
+
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
 
     f = request.files["file"]
-    if f.filename == "":
-        return jsonify({"error": "no selected file"}), 400
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
     try:
         df, prep_warnings = load_and_preprocess(f)
@@ -695,6 +784,8 @@ def upload():
     return jsonify(make_json_serializable(upload_resp)), 200
 
 @app.route("/api/analyze", methods=["POST"])
+@csrf.exempt
+@limiter.limit("5 per minute")  # Limit: 5 requests per minute per IP
 def analyze():
     """Robust analysis endpoint with diagnostic logging & failure shielding.
 
@@ -712,8 +803,8 @@ def analyze():
     if "file" not in request.files:
         return jsonify({"error": "no file part"}), 400
     f = request.files["file"]
-    if f.filename == "":
-        return jsonify({"error": "no selected file"}), 400
+    if f.filename == "" or not allowed_file(f.filename):
+        return jsonify({"error": "invalid or missing file (must be .csv)"}), 400
 
     excluded = request.form.get("excluded", os.getenv("EXCLUDED_COLUMNS", "id,timestamp"))
     excluded_cols = [c.strip() for c in excluded.split(",") if c.strip()]
@@ -836,6 +927,7 @@ def analyze():
 
 
 @app.route("/api/plot/<fig_id>.png", methods=["POST"])
+@csrf.exempt
 def plot_png(fig_id: str):
     """Return a single plot as PNG (fig1, fig2, fig3).
 
@@ -909,6 +1001,7 @@ RUNNING_ANALYSIS_PID: Optional[int] = None
 CANCEL_REQUESTED: bool = False
 
 @app.route("/api/cancel-analysis", methods=["POST"])
+@csrf.exempt
 def cancel_analysis():
     """
     Cancel the current analysis job, abort running tasks, clean up partial files, and respond with status.

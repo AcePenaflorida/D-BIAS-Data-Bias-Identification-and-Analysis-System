@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Papa from 'papaparse';
 import { Upload, FileSpreadsheet, AlertCircle, Loader2, CheckCircle, Info } from 'lucide-react';
 import { Button } from './ui/button';
@@ -48,6 +48,9 @@ export function UploadPage({
   const [isCancelling, setIsCancelling] = useState(false);
   const [distributionData, setDistributionData] = useState<Array<{ value: number; frequency: number }> | null>(null);
   const [showHeroImage, setShowHeroImage] = useState<boolean>(true);
+  // Spinner shown only when validation takes longer than 2s
+  const [showValidationSpinner, setShowValidationSpinner] = useState(false);
+  const validationSpinnerTimeoutRef = useRef<number | null>(null);
   // Cancel analysis and notify backend
   const handleCancelAnalyze = async () => {
     if (analysisController) {
@@ -297,13 +300,22 @@ export function UploadPage({
       setUploadInfoError('');
       // Start validation without opening the preview yet to avoid flicker for invalid datasets
       setShowPreviewDialog(false);
-      setIsValidating(true);
-      console.debug('[UploadPage] Validating dataset…');
-      uploadDataset(selectedFile)
+        setIsValidating(true);
+        setShowValidationSpinner(false);
+        // start timer to show spinner only after 2s
+        if (validationSpinnerTimeoutRef.current) window.clearTimeout(validationSpinnerTimeoutRef.current);
+        validationSpinnerTimeoutRef.current = window.setTimeout(() => {
+          // only show if still validating and preview not already open
+          if (isValidating && !showPreviewDialog) setShowValidationSpinner(true);
+        }, 2000);
+        console.debug('[UploadPage] Validating dataset…');
+        uploadDataset(selectedFile)
         .then((info) => {
           console.debug('[UploadPage] Validation success', info);
           setUploadInfo(info);
-          setIsValidating(false);
+            setIsValidating(false);
+            setShowValidationSpinner(false);
+            if (validationSpinnerTimeoutRef.current) { window.clearTimeout(validationSpinnerTimeoutRef.current); validationSpinnerTimeoutRef.current = null; }
           // Open the preview only after successful validation
           setShowPreviewDialog(true);
         })
@@ -313,12 +325,24 @@ export function UploadPage({
           console.warn('[UploadPage] Validation failed', msg);
           // Close preview dialog if it was opened and show validation error dialog instead
           setShowPreviewDialog(false);
-          setIsValidating(false);
+            setIsValidating(false);
+            setShowValidationSpinner(false);
+            if (validationSpinnerTimeoutRef.current) { window.clearTimeout(validationSpinnerTimeoutRef.current); validationSpinnerTimeoutRef.current = null; }
           setUploadInfo(null);
           setShowValidationDialog(true);
         });
     }
   };
+
+    // Ensure timer cleared when component unmounts or preview opens
+    useEffect(() => {
+      return () => {
+        if (validationSpinnerTimeoutRef.current) {
+          window.clearTimeout(validationSpinnerTimeoutRef.current);
+          validationSpinnerTimeoutRef.current = null;
+        }
+      };
+    }, []);
 
   // Load the latest cached analysis from backend and open dashboard (if exists)
   const handleLoadCached = async () => {
@@ -596,7 +620,7 @@ export function UploadPage({
                       className="hidden"
                     />
                   </div>
-                  <p className="text-slate-500 text-sm">Supported formats: CSV, XLSX (first sheet only)</p>
+                  <p className="text-slate-500 text-sm">Supported formats: CSV</p>
                 </div>
               </div>
 
@@ -606,9 +630,12 @@ export function UploadPage({
                     <p className="text-slate-700">
                       <span className="text-slate-500">Selected file:</span> {file.name}
                     </p>
-                    {/* Show only validating status; suppress rows/columns/columns list per refined requirements */}
+                    {/* Show only validating status; spinner appears after 2s if still validating */}
                     {!uploadInfoError && isValidating && (
-                      <p className="mt-2 text-xs text-slate-500">Validating dataset…</p>
+                      <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                        <span>Validating dataset…</span>
+                        {showValidationSpinner && <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />}
+                      </div>
                     )}
                     {/* Success UI: show a green validated badge when backend validation succeeded */}
                     {uploadInfo && !uploadInfoError && !isValidating && (
