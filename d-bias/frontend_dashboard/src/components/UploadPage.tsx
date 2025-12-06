@@ -481,10 +481,11 @@ export function UploadPage({
                     e.preventDefault();
                     scrollUploadCardToCenter();
                   }}
-                  className={`group text-blue-600 text-sm inline-flex items-center gap-2 px-3 py-1 rounded-md transition-transform duration-300 ease-out hover:scale-105 active:scale-95 ${isScrollingToUpload ? 'scale-95 opacity-80' : ''}`}
+                  className={`scroll-button text-blue-600 text-sm inline-flex items-center gap-2 px-4 py-2 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${isScrollingToUpload ? 'scale-95 opacity-80' : ''}`}
+                  style={{ opacity: isScrollingToUpload ? 0.8 : 1 }}
                 >
-                  <span>Scroll down to upload your first dataset</span>
-                  <span aria-hidden className="ml-1 transition-transform duration-300 transform group-hover:translate-x-1">
+                  <span className="scroll-text">Scroll down to upload your first dataset</span>
+                  <span aria-hidden className="scroll-arrow ml-1">
                     {/* SVG arrow with glowing drop-shadow and subtle pulse */}
                     <svg
                       className="w-5 h-5 text-blue-600"
@@ -564,7 +565,7 @@ export function UploadPage({
                     <div className="mt-2 text-xs text-slate-500">Shown for the most numeric column detected in the preview. Hover to inspect values.</div>
                     {uploadInfo && !uploadInfoError && (
                       <div className="mt-4 flex justify-end">
-                        <Button onClick={handleContinueAnalyzing} className="font-semibold">
+                        <Button onClick={handleContinueAnalyzing} className="continue-button font-semibold">
                           Continue Analyzing
                         </Button>
                       </div>
@@ -574,14 +575,7 @@ export function UploadPage({
                   <div className="h-44 flex items-center justify-center">
                       <div className="text-center">
                         <div className="text-sm text-slate-500">Ready to get insights? Upload a dataset to visualize distributions.</div>
-                        <div className="mt-3">
-                          <Button
-                            onClick={() => document.getElementById('file-upload')?.click()}
-                            className="bg-blue-600 text-white px-3 py-1 rounded-md"
-                          >
-                            Upload dataset
-                          </Button>
-                        </div>
+                        {/* Upload dataset button removed */}
                       </div>
                   </div>
                 )}
@@ -660,12 +654,13 @@ export function UploadPage({
                       onClick={handleLoadCached}
                       disabled={isLoadingCached || hasCached === false}
                       variant="secondary"
+                      className="cached-button"
                     >
                       {isLoadingCached
-                        ? 'Loading cached…'
+                        ? 'Loading latest analysis…'
                         : hasCached === false
-                          ? 'No Cache Yet'
-                          : 'Load Cached Analysis'}
+                          ? 'No Analysis Yet'
+                          : 'Load Recent Analysis'}
                     </Button>
                   </div>
                 )}
@@ -840,11 +835,11 @@ export function UploadPage({
                       variant="outline"
                       size="sm"
                       onClick={() => { if (!isAnalyzing) document.getElementById('file-upload')?.click(); }}
-                      className={`shrink-0 transition-all duration-300 ease-in-out ${isAnalyzing ? 'opacity-60 pointer-events-none' : 'hover:bg-[#155dfc] hover:text-white hover:scale-[1.04] hover:shadow-lg focus:ring-2 focus:ring-[#155dfc] active:scale-[0.98]'}`}
+                      className={`reupload-button shrink-0 focus:ring-2 focus:ring-[#155dfc] ${isAnalyzing ? 'opacity-60 pointer-events-none' : ''}`}
                       disabled={isAnalyzing}
                       aria-disabled={isAnalyzing}
                     >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" /> Re-upload CSV
+                      <FileSpreadsheet className="button-icon h-4 w-4 mr-2" /> Re-upload CSV
                     </Button>
               </div>
             </div>
@@ -933,11 +928,11 @@ export function UploadPage({
                   onClick={handleAnalyze}
                   disabled={!file || isAnalyzing}
                   aria-busy={isAnalyzing}
-                  className={`flex items-center gap-2 font-semibold transition-all duration-300 ease-in-out bg-[#155dfc] text-white px-6 py-2 rounded-lg shadow-sm hover:bg-[#0e47c2] hover:scale-[1.04] hover:shadow-lg focus:ring-2 focus:ring-[#155dfc] active:scale-[0.98] ${(!file || isAnalyzing) ? 'opacity-60 pointer-events-none' : ''}`}
+                  className={`analyze-button flex items-center gap-2 font-semibold bg-[#155dfc] text-white px-6 py-2 rounded-lg shadow-sm focus:ring-2 focus:ring-[#155dfc] ${(!file || isAnalyzing) ? 'opacity-60 pointer-events-none' : ''}`}
                   style={{ backgroundColor: '#155dfc', border: 'none' }}
                 >
                   {isAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {isAnalyzing ? 'Analyzing…' : 'Analyze'}
+                  <span className="analyze-text">{isAnalyzing ? 'Analyzing…' : 'Analyze'}</span>
                 </Button>
               )}
             </div>
