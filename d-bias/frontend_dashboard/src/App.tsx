@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import ReportPreviewContent from './components/ReportPreviewContent';
 import { supabase } from './lib/supabase';
 import React from "react";
+import ConsentModal from "./components/ConsentModal";
 
 export interface AnalysisResult {
   id: string;
@@ -361,6 +362,7 @@ export default function App() {
 
   return (
     <>
+      <ConsentModal />
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
         {/* Sidebar/ToggleMenu removed. Header now exposes History/Profile/Logout controls. */}
 

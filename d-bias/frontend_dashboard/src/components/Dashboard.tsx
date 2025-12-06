@@ -105,7 +105,8 @@ export function Dashboard({
             variant="ghost"
             onClick={onBackToUpload}
             size="sm"
-            className="flex items-center gap-1 px-2 py-1 rounded-md font-medium text-slate-700 border border-slate-200 hover:bg-slate-50 transition-colors"
+            title="Back to Upload"
+            className="back-button flex items-center gap-1 px-2 py-1 rounded-md font-medium text-slate-700 border border-slate-200 hover:bg-slate-50 transition-colors"
             style={{ minWidth: 'fit-content' }}
           >
             <ArrowLeft className="w-3 h-3 mr-1" />
@@ -134,7 +135,7 @@ export function Dashboard({
                   <Button
                     onClick={() => setShowPDFPreview(true)}
                     size="sm"
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg font-medium text-white transition-colors"
+                    className="pdf-button flex items-center gap-1 px-3 py-1 rounded-lg font-medium text-white transition-colors"
                     style={{ backgroundColor: '#155dfc', boxShadow: '0 2px 8px rgba(21,93,252,0.10)', minWidth: 'fit-content' }}
                   >
                     <FileText className="w-3 h-3 mr-1" />
@@ -266,23 +267,8 @@ export function Dashboard({
               </div>
             </div>
 
-            {/* Raw Bias JSON Debug Toggle */}
-            {result.rawBiasReport && result.rawBiasReport.length > 0 && (
-              <div className="mb-12">
-                <button
-                  onClick={() => setShowRawBias(!showRawBias)}
-                  className="flex items-center gap-2 text-xs px-3 py-2 rounded border border-slate-300 bg-white hover:bg-slate-50 transition-colors"
-                >
-                  <Code className="w-3 h-3" />
-                  {showRawBias ? 'Hide Raw Bias JSON' : 'Show Raw Bias JSON'}
-                </button>
-                {showRawBias && (
-                  <pre className="mt-3 p-4 text-xs bg-slate-900 text-slate-100 rounded-lg overflow-auto max-h-96">
-{JSON.stringify(result.rawBiasReport, null, 2)}
-                  </pre>
-                )}
-              </div>
-            )}
+            {/* Raw Bias JSON Debug Toggle - HIDDEN */}
+            {/* Show raw bias debugging disabled */}
           </div>
 
             {/* Right Column: SidePanel */}

@@ -104,7 +104,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
           Login
         </Button>
 
-        <Button variant="default" size="sm" onClick={() => { setShowLoginDialog(false); setShowSignUpDialog(true); }}>
+        <Button variant="default" size="sm" className="signup-button" onClick={() => { setShowLoginDialog(false); setShowSignUpDialog(true); }}>
           Sign Up
         </Button>
       </div>
@@ -115,7 +115,7 @@ export function AuthActions({ onLogin, onSignUp, userHistory = [], onViewHistory
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-2xl font-semibold">Welcome back</h2>
-                <p className="text-sm text-slate-500 mt-1">Sign in to continue to D-BIAS</p>
+                <p className="text-sm text-slate-500 mt-1 mb-4">Sign in to continue to D-BIAS</p>
               </div>
             </div>
 
