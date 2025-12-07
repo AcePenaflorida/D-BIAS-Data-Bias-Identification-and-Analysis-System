@@ -12,8 +12,26 @@ export function Footer() {
           <div>
             <h4 className="font-semibold text-foreground mb-4">Resources</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground transition-colors">Documentation</a></li>
-              <li><a href="#" className="hover:text-foreground transition-colors">API Reference</a></li>
+              <li>
+                <a
+                  href="https://github.com/AcePenaflorida/D-BIAS-Data-Bias-Identification-and-Analysis-System/blob/main/README.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Documentation
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/AcePenaflorida/D-BIAS-Data-Bias-Identification-and-Analysis-System/blob/main/API_REFERENCE.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors"
+                >
+                  API Reference
+                </a>
+              </li>
             </ul>
           </div>
           <div>
@@ -29,7 +47,16 @@ export function Footer() {
                   GitHub
                 </a>
               </li>
-              <li><a href="#" className="hover:text-foreground transition-colors">Support</a></li>
+              <li>
+                <a
+                  href="https://github.com/AcePenaflorida/D-BIAS-Data-Bias-Identification-and-Analysis-System"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Support
+                </a>
+              </li>
             </ul>
           </div>
         </div>
