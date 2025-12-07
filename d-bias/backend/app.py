@@ -783,7 +783,7 @@ def analyze():
     Form-data:
       file: CSV file (required)
       excluded: optional comma list
-    run_gemini: 'true' to enable Gemini summary (requires GEMINI_API_KEY env)
+      run_gemini: 'true' to enable Gemini summary (requires GEMINI_API_KEY)
       return_plots: 'json' | 'png' | 'both' | 'none'
     """
     t0 = time.time()
@@ -838,31 +838,28 @@ def analyze():
         fairness_score = reporter.fairness_score()
 
 
-        # Use a single temporary Gemini API key from environment (no Supabase lookup)
+        # Use GeminiKeyManager and GeminiConnector for multi-key rotation
         ai_output = None
         if run_gemini_flag:
             # Check cancellation before starting potentially long Gemini calls
             if CANCEL_REQUESTED:
                 log("analysis canceled before Gemini call")
                 return jsonify({"status": "Canceled"}), 200
-
-            env_key = os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_FALLBACK_API_KEY")
-            if not env_key:
-                ai_output = "Gemini summary unavailable: no GEMINI_API_KEY configured."
-            else:
-                gemini_connector = GeminiConnector(api_key=env_key, key_manager=None, log=log)
-                try:
-                    gemini_connector.cancel_requested = lambda: CANCEL_REQUESTED
-                except Exception:
-                    pass
-                ai_output = gemini_connector.summarize_biases(
-                    bias_report,
-                    dataset_name=f.filename,
-                    shape=df.shape,
-                    excluded_columns=excluded_cols,
-                    use_multi_key=False,
-                    max_retries=1
-                )
+            key_manager = GeminiKeyManager(log=log)
+            gemini_connector = GeminiConnector(key_manager=key_manager, log=log)
+            # Allow GeminiConnector to observe cooperative cancellation requests
+            try:
+                gemini_connector.cancel_requested = lambda: CANCEL_REQUESTED
+            except Exception:
+                pass
+            ai_output = gemini_connector.summarize_biases(
+                bias_report,
+                dataset_name=f.filename,
+                shape=df.shape,
+                excluded_columns=excluded_cols,
+                use_multi_key=True,
+                max_retries=3
+            )
 
         plots_payload = build_plots_payload(
             bias_report=bias_report,
