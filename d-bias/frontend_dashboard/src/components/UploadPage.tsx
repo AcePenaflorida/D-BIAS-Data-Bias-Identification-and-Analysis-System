@@ -268,12 +268,19 @@ export function UploadPage({
     try {
       // Request both JSON and PNG plot data so previews and PDFs can embed images
       const result = await analyzeDatasetThrottled(file as File, { runGemini: true, returnPlots: 'both' }, controller.signal);
-      // Suppress any post-analysis toasts
+      const summary = (result?.overallMessage || '').toLowerCase();
+      if (!summary || summary.includes('all gemini keys') || summary.includes('temporarily unavailable') || summary.includes('temporarily rate-limited') || summary.includes('rate-limited') || summary.includes('gemini error')) {
+        toast.warning('Gemini summary unavailable right now. Dataset analysis completed; please retry later for AI explanation.');
+      }
+      // Suppress any other post-analysis toasts
       onAnalysisComplete(result);
     } catch (e: any) {
       const name = String(e?.name || '');
       const msg = String(e?.message || '');
       const isAbortLike = name === 'AbortError' || /aborted/i.test(msg);
+      if (msg.includes('no_gemini_keys_available') || msg.toLowerCase().includes('no gemini keys')) {
+        toast.warning('All Gemini keys are on cooldown or out of quota. Analysis canceled.');
+      }
       if (isAbortLike) {
         setError('Analysis canceled.');
         // Suppress cancel toast

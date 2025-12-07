@@ -856,6 +856,15 @@ def analyze():
                 log("analysis canceled before Gemini call")
                 return jsonify({"status": "Canceled"}), 200
             key_manager = GeminiKeyManager(log=log)
+            available_keys = key_manager.available_keys()
+            usable_keys = [k for k in available_keys if key_manager.ping_key(k)]
+            if not usable_keys:
+                log("no usable gemini keys (cooldown/quota); canceling analysis")
+                return jsonify({
+                    "status": "Canceled",
+                    "error": "no_gemini_keys_available",
+                    "message": "All Gemini keys are on cooldown or out of quota. Please retry later.",
+                }), 503
             gemini_connector = GeminiConnector(key_manager=key_manager, log=log)
             # Allow GeminiConnector to observe cooperative cancellation requests
             try:
@@ -868,7 +877,7 @@ def analyze():
                 shape=df.shape,
                 excluded_columns=excluded_cols,
                 use_multi_key=True,
-                max_retries=3
+                max_retries=8
             )
 
         plots_payload = build_plots_payload(

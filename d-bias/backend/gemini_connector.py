@@ -40,6 +40,57 @@ class GeminiKeyManager:
         self.log("No available Gemini keys (all on cooldown)")
         return None
 
+    def available_keys(self):
+        """Return keys that are active and not on cooldown (no quota check)."""
+        now = datetime.utcnow()
+        self.fetch_active_keys()
+        usable = []
+        for key in self.keys:
+            cooldown_until = key.get("cooldown_until")
+            if not cooldown_until:
+                usable.append(key)
+                continue
+            try:
+                if datetime.fromisoformat(cooldown_until) < now:
+                    usable.append(key)
+            except Exception:
+                # If cooldown is malformed, skip it
+                continue
+        self.log(f"Available keys (not on cooldown): {len(usable)}/{len(self.keys)}")
+        return usable
+
+    def any_available(self):
+        """Shortcut to check if any key is eligible (no quota check)."""
+        return len(self.available_keys()) > 0
+
+    def ping_key(self, key, model_name="models/gemini-2.5-flash"):
+        """Lightweight availability check against Gemini; sets cooldown on quota errors."""
+        api_key = key.get("api_key") if isinstance(key, dict) else None
+        key_id = key.get("id") if isinstance(key, dict) else None
+        if not api_key:
+            self.log(f"Ping skipped: key missing api_key field: {key}")
+            return False
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
+            model.generate_content("ping")
+            self.log(f"Ping success for key {key_id} using {model_name}")
+            return True
+        except Exception as e:
+            lower = str(e).lower()
+            retry_after = None
+            if "limit: 0" in lower:
+                retry_after = 900
+            elif ("rate limit" in lower) or ("quota exceeded" in lower) or ("429" in lower):
+                retry_after = 60
+            if retry_after:
+                try:
+                    self.handle_rate_limit(key, retry_after)
+                except Exception:
+                    pass
+            self.log(f"Ping failed for key {key_id}: {e}")
+            return False
+
     def set_cooldown(self, key_id, seconds):
         until = datetime.utcnow() + timedelta(seconds=seconds)
         self.supabase.table("gemini_api_keys").update({"cooldown_until": until.isoformat()}).eq("id", key_id).execute()
@@ -117,7 +168,7 @@ class GeminiConnector:
         except Exception:
             return str(response)
 
-    def summarize_biases(self, bias_report, dataset_name="Dataset", shape=None, excluded_columns=None, use_multi_key=False, max_retries=3):
+    def summarize_biases(self, bias_report, dataset_name="Dataset", shape=None, excluded_columns=None, use_multi_key=False, max_retries=8):
         shape_info = f"\nDataset shape: {shape[0]} rows × {shape[1]} columns." if shape else ""
         excluded_info = f"\nExcluded columns: {excluded_columns}" if excluded_columns else ""
         prompt = f"""
@@ -193,6 +244,26 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
 
         preferred_model = os.getenv("GEMINI_MODEL", "models/gemini-3.0-pro")
         fallback_model = "models/gemini-2.5-pro"
+        model_candidates = [
+            preferred_model,
+            "models/gemini-3.0-flash",
+            "models/gemini-2.5-pro",
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash",
+        ]
+
+        def _pick_model():
+            last_err = None
+            for name in model_candidates:
+                try:
+                    self.log(f"Trying Gemini model: {name}")
+                    return genai.GenerativeModel(name)
+                except Exception as e:
+                    last_err = e
+                    self.log(f"Model {name} failed: {e}")
+            if last_err:
+                raise last_err
+            raise RuntimeError("No Gemini model could be initialized")
 
         if not use_multi_key:
             if not self.api_key:
@@ -200,12 +271,8 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 raise ValueError("❌ Gemini API key not found.")
             genai.configure(api_key=self.api_key)
             try:
-                try:
-                    self.model = genai.GenerativeModel(preferred_model)
-                    self.log(f"Using preferred Gemini model (single-key): {preferred_model}")
-                except Exception as model_err:
-                    self.log(f"Preferred model {preferred_model} failed: {model_err}; falling back to {fallback_model}")
-                    self.model = genai.GenerativeModel(fallback_model)
+                self.model = _pick_model()
+                self.log(f"Using Gemini model (single-key): {self.model.model_name}")
                 response = self.model.generate_content(prompt)
                 self.log("Gemini response received (single key)")
                 summary_text = self._extract_text(response)
@@ -240,12 +307,8 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     continue
                 genai.configure(api_key=gemini_key)
                 try:
-                    try:
-                        self.model = genai.GenerativeModel(preferred_model)
-                        self.log(f"Using preferred Gemini model: {preferred_model}")
-                    except Exception as model_err:
-                        self.log(f"Preferred model {preferred_model} failed: {model_err}; falling back to {fallback_model}")
-                        self.model = genai.GenerativeModel(fallback_model)
+                    self.model = _pick_model()
+                    self.log(f"Using Gemini model: {self.model.model_name}")
                     # Check cancellation immediately before making the external call
                     if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
                         self.log("Gemini summarize canceled by request (pre-call)")
@@ -261,9 +324,10 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                             retry_after = self._parse_retry_after_seconds_from_error_text(summary_text)
                             if retry_after is None:
                                 # If the key shows limit: 0 (free-tier exhausted), back off longer to avoid thrash.
-                                retry_after = 900 if "limit: 0" in lower else 20
+                                retry_after = 900 if "limit: 0" in lower else 45
                             self.key_manager.handle_rate_limit(key, retry_after)
-                            jitter = random.uniform(0.5, 2.0)
+                            # Increase jitter slightly by attempt to stagger retries across many keys
+                            jitter = random.uniform(1.0, 3.0) + (attempt * 0.25)
                             self.log(
                                 f"Rate-limit/quota signal in response; retry_after={retry_after}s jitter={round(jitter,2)}s "
                                 f"attempt={attempt}/{max_retries}"
@@ -279,7 +343,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     self.log(f"Gemini call failed for key {key.get('id')}: {e}")
                     try:
                         # If quota exhausted (limit: 0), back off longer to let daily limits reset
-                        backoff = 900 if "limit: 0" in str(e).lower() else 20
+                        backoff = 900 if "limit: 0" in str(e).lower() else 45
                         self.key_manager.handle_rate_limit(key, retry_after=backoff)
                     except Exception:
                         # best effort; ignore if handler fails

@@ -78,7 +78,7 @@ def distributed_semaphore(name, limit, timeout=60):
             details={"slot": slot, "limit": limit},
         )
 
-def process_gemini_request(request_id, bias_report, dataset_name, shape, excluded_columns, use_multi_key=True, max_retries=3):
+def process_gemini_request(request_id, bias_report, dataset_name, shape, excluded_columns, use_multi_key=True, max_retries=8):
     """
     Worker function to process Gemini requests with distributed semaphore and key rotation.
     """
@@ -129,7 +129,7 @@ def enqueue_gemini_request(bias_report, dataset_name, shape, excluded_columns):
         shape,
         excluded_columns,
         use_multi_key=True,
-        max_retries=3
+        max_retries=8
     )
     logger.info(f"[queue] Request {request_id} enqueued, job id: {job.id}")
     log_monitor_event(
@@ -146,9 +146,10 @@ def handle_gemini_request(bias_report, dataset_name, shape, excluded_columns):
     Otherwise, process immediately.
     """
     key_manager = GeminiKeyManager(log=logger.info)
-    available_key = key_manager.get_next_key()
-    if not available_key:
-        logger.info("[queue] All keys on cooldown, enqueuing request")
+    available_list = key_manager.available_keys()
+    usable_keys = [k for k in available_list if key_manager.ping_key(k)]
+    if not usable_keys:
+        logger.info("[queue] No usable keys (cooldown or quota), enqueuing request")
         log_monitor_event(
             event_type="all_keys_on_cooldown",
             request_id=None,
@@ -160,7 +161,7 @@ def handle_gemini_request(bias_report, dataset_name, shape, excluded_columns):
         logger.info("[direct] Key available, processing immediately")
         log_monitor_event(
             event_type="key_available",
-            key_id=available_key.get("id"),
+            key_id=usable_keys[0].get("id") if usable_keys else None,
             details={"dataset": dataset_name, "shape": shape, "excluded": excluded_columns},
         )
         return process_gemini_request(
@@ -170,7 +171,7 @@ def handle_gemini_request(bias_report, dataset_name, shape, excluded_columns):
             shape,
             excluded_columns,
             use_multi_key=True,
-            max_retries=3
+            max_retries=8
         )
 
 # Example usage in Flask endpoint:
