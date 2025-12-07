@@ -286,6 +286,9 @@ export function UploadPage({
         // Suppress cancel toast
       } else {
         setError(msg || 'Analysis failed.');
+        // Optionally log to console for debugging
+        // eslint-disable-next-line no-console
+        console.error('[UploadPage] analyze error', e);
         // Suppress error toast
       }
     } finally {
@@ -943,6 +946,11 @@ export function UploadPage({
                 </Button>
               )}
             </div>
+            {error && (
+              <div className="mt-2 text-sm text-red-600" role="status" aria-live="polite">
+                {error}
+              </div>
+            )}
           </div>
 
           {/* Removed page overlay; spinner now lives inside the Analyze button for a lighter UX */}
