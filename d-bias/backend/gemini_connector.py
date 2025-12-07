@@ -55,18 +55,19 @@ class GeminiKeyManager:
 class GeminiConnector:
     """Summarizes bias results using Gemini 2.5 Pro, with key rotation via GeminiKeyManager."""
     def __init__(self, api_key: str = None, key_manager: GeminiKeyManager = None, log=None):
-        self.api_key = api_key
+        # Prefer provided key, then env-based fallbacks. This supports temporary keys when rotation is down.
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_FALLBACK_API_KEY")
         self.key_manager = key_manager
         self.log = log or (lambda msg: print(f"[GeminiConnector] {msg}"))
         self.cancel_requested = lambda: False
 
-        if not api_key:
+        if not self.api_key:
             self.log("No API key provided. Gemini is disabled.")
             self.model = None
             return
 
         # Configure API
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=self.api_key)
 
         # Ordered fallback list (most capable → least capable)
         MODEL_CANDIDATES = [
@@ -189,7 +190,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
             except Exception as e:
                 return f"❌ Gemini error: {str(e)}"
         else:
-            # Multi-key rotation logic
+            # Multi-key rotation logic with optional fallback to single env key when pool is empty.
             if not self.key_manager:
                 raise ValueError("GeminiKeyManager required for multi-key usage.")
             attempt = 0
@@ -203,6 +204,17 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     pass
                 key = self.key_manager.get_next_key()
                 if not key:
+                    # Fall back to the provided/env key if rotation has no available keys.
+                    if self.api_key:
+                        self.log("All rotation keys unavailable; falling back to single GEMINI_API_KEY.")
+                        genai.configure(api_key=self.api_key)
+                        self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+                        try:
+                            response = self.model.generate_content(prompt)
+                            self.log("Gemini response received (fallback single key)")
+                            return self._extract_text(response)
+                        except Exception as e:
+                            return f"❌ Gemini error (fallback): {str(e)}"
                     self.log("All Gemini keys on cooldown, cannot proceed")
                     return "All Gemini keys are temporarily rate-limited. Please try again later."
                 gemini_key = key["api_key"]
@@ -234,6 +246,16 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     attempt += 1
                     continue
             self.log("All Gemini keys failed or rate-limited after retries")
+            # If retries exhausted, last-resort fallback to env key if present.
+            if self.api_key:
+                try:
+                    self.log("Retries exhausted; attempting fallback single GEMINI_API_KEY.")
+                    genai.configure(api_key=self.api_key)
+                    self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+                    response = self.model.generate_content(prompt)
+                    return self._extract_text(response)
+                except Exception as e:
+                    return f"❌ Gemini error (final fallback): {str(e)}"
             return "All Gemini keys are temporarily unavailable. Please try again later."
 
     def _parse_retry_after_seconds_from_error_text(self, text: str):

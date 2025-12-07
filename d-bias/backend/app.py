@@ -32,7 +32,6 @@ from preprocessing import load_and_preprocess, validate_dataset
 
 # load .env
 load_dotenv()
-print("GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
 
 
 
