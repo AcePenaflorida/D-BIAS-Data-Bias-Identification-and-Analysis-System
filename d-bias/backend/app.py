@@ -932,16 +932,18 @@ def analyze():
         # Clear running job and cancellation flag so subsequent analyses start clean
         try:
             RUNNING_ANALYSIS_JOB = None
-            RUNNING_ANALYSIS_PID = None
-            CANCEL_REQUESTED = False
-        except Exception:
-            pass
-
-
-@app.route("/api/plot/<fig_id>.png", methods=["POST"])
-@csrf.exempt
-def plot_png(fig_id: str):
-    """Return a single plot as PNG (fig1, fig2, fig3).
+                        key_manager = GeminiKeyManager(log=log)
+                        available_keys = key_manager.available_keys()
+                        log(f"gemini_available_keys={len(available_keys)}")
+                        usable_keys = [k for k in available_keys if key_manager.ping_key(k)]
+                        log(f"gemini_usable_keys={len(usable_keys)}")
+                        if not usable_keys:
+                            log("no usable gemini keys (cooldown/quota); canceling analysis")
+                            return jsonify({
+                                "status": "Canceled",
+                                "error": "no_gemini_keys_available",
+                                "message": "All Gemini keys are on cooldown or out of quota. Please retry later.",
+                            }), 503
 
     Expects multipart/form-data with key 'file' (CSV/Excel). Performs preprocessing and validation
     before generating the visualization. Returns 400 if validation fails.
@@ -1000,11 +1002,13 @@ def plot_png(fig_id: str):
     resp.headers.set("Content-Type", "image/png")
     resp.headers.set("Content-Disposition", f"inline; filename={fig_id}.png")
     return resp
-
-
-# --- Cancel Analysis Endpoint ---
-import signal
-from typing import Optional
+                    return jsonify({"error": "internal_error", "detail": str(e)}), 500
+                finally:
+                    try:
+                        log(f"analyze_internal_error={e}")
+                    except Exception:
+                        pass
+                    return jsonify({"error": "internal_error", "detail": str(e)}), 500
 
 # Track running analysis jobs (simple global for demo; use a job manager in production)
 RUNNING_ANALYSIS_JOB: Optional[threading.Thread] = None
