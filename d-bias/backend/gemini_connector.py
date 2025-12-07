@@ -260,13 +260,11 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
 
         preferred_model = os.getenv("GEMINI_MODEL", "models/gemini-3.0-pro")
         fallback_model = "models/gemini-2.5-pro"
-        # Prefer flash variants first to reduce quota burn and avoid free-tier daily caps on pro.
         model_candidates = [
-            "models/gemini-3.0-flash",
-            "models/gemini-2.5-flash",
             preferred_model,
-            "models/gemini-3.0-pro",
+            "models/gemini-3.0-flash",
             "models/gemini-2.5-pro",
+            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash",
         ]
 
@@ -306,8 +304,6 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 self.log("multi-key mode requested but key_manager missing")
                 raise ValueError("GeminiKeyManager required for multi-key usage.")
             attempt = 0
-            limit_zero_hits = 0  # Track "limit: 0" responses that likely indicate project-wide free-tier exhaustion
-            max_limit_zero_hits = 2
             while attempt < max_retries:
                 attempt += 1
                 # Respect cooperative cancellation if requested by caller
@@ -346,11 +342,6 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                                 # If the key shows limit: 0 (free-tier exhausted), back off longer to avoid thrash.
                                 retry_after = 900 if "limit: 0" in lower else 45
                             self.key_manager.handle_rate_limit(key, retry_after)
-                            if "limit: 0" in lower:
-                                limit_zero_hits += 1
-                                self.log(f"Detected limit:0 quota exhaustion (hit {limit_zero_hits}/{max_limit_zero_hits}); treating as project-level free-tier cap")
-                                if limit_zero_hits >= max_limit_zero_hits:
-                                    return "Gemini quota is exhausted for this project (free-tier limit:0). Bias explanations were skipped."
                             # Increase jitter slightly by attempt to stagger retries across many keys
                             jitter = random.uniform(1.0, 3.0) + (attempt * 0.25)
                             self.log(
@@ -367,15 +358,9 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 except Exception as e:
                     self.log(f"Gemini call failed for key {key.get('id')}: {e}")
                     try:
-                        lower_err = str(e).lower()
                         # If quota exhausted (limit: 0), back off longer to let daily limits reset
-                        backoff = 900 if "limit: 0" in lower_err else 45
+                        backoff = 900 if "limit: 0" in str(e).lower() else 45
                         self.key_manager.handle_rate_limit(key, retry_after=backoff)
-                        if "limit: 0" in lower_err:
-                            limit_zero_hits += 1
-                            self.log(f"Detected limit:0 quota exhaustion (hit {limit_zero_hits}/{max_limit_zero_hits}); treating as project-level free-tier cap")
-                            if limit_zero_hits >= max_limit_zero_hits:
-                                return "Gemini quota is exhausted for this project (free-tier limit:0). Bias explanations were skipped."
                     except Exception:
                         # best effort; ignore if handler fails
                         pass
