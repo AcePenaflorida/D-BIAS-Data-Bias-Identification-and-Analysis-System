@@ -61,6 +61,18 @@ class GeminiConnector:
         self.log = log or (lambda msg: print(f"[GeminiConnector] {msg}"))
         self.cancel_requested = lambda: False
 
+        def _mask(key: str) -> str:
+            if not key:
+                return "none"
+            if len(key) <= 8:
+                return "***"
+            return f"{key[:6]}...{key[-4:]}"
+
+        self._mask_key = _mask
+
+        source = "provided" if api_key else "env"
+        self.log(f"Gemini init key_source={source} masked={self._mask_key(self.api_key)}")
+
         if not self.api_key:
             self.log("No API key provided. Gemini is disabled.")
             self.model = None
@@ -180,14 +192,18 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
         if not use_multi_key:
             if not self.api_key:
                 raise ValueError("❌ Gemini API key not found.")
+            self.log(f"Gemini single-key mode using masked={self._mask_key(self.api_key)}")
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel("models/gemini-2.5-pro")
             try:
                 response = self.model.generate_content(prompt)
                 self.log("Gemini response received (single key)")
                 summary_text = self._extract_text(response)
+                if isinstance(summary_text, str):
+                    self.log(f"Gemini response length={len(summary_text)} preview={summary_text[:160]!r}")
                 return summary_text or "⚠️ Gemini returned no summary text."
             except Exception as e:
+                self.log(f"Gemini single-key error masked_key={self._mask_key(self.api_key)} err={e}")
                 return f"❌ Gemini error: {str(e)}"
         else:
             # Multi-key rotation logic with optional fallback to single env key when pool is empty.
@@ -212,12 +228,17 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                         try:
                             response = self.model.generate_content(prompt)
                             self.log("Gemini response received (fallback single key)")
-                            return self._extract_text(response)
+                            text = self._extract_text(response)
+                            if isinstance(text, str):
+                                self.log(f"Gemini fallback response length={len(text)} preview={text[:160]!r}")
+                            return text
                         except Exception as e:
+                            self.log(f"Gemini fallback error masked_key={self._mask_key(self.api_key)} err={e}")
                             return f"❌ Gemini error (fallback): {str(e)}"
                     self.log("All Gemini keys on cooldown, cannot proceed")
                     return "All Gemini keys are temporarily rate-limited. Please try again later."
                 gemini_key = key["api_key"]
+                self.log(f"Gemini multi-key using id={key.get('id')} label={key.get('label','')} masked={self._mask_key(gemini_key)} attempt={attempt+1}/{max_retries}")
                 genai.configure(api_key=gemini_key)
                 self.model = genai.GenerativeModel("models/gemini-2.5-pro")
                 try:
@@ -228,6 +249,8 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     response = self.model.generate_content(prompt)
                     self.log(f"Gemini response received (key {key['id']})")
                     summary_text = self._extract_text(response)
+                    if isinstance(summary_text, str):
+                        self.log(f"Gemini response length={len(summary_text)} preview={summary_text[:160]!r}")
                     # Check for rate-limit in output
                     if isinstance(summary_text, str) and ("rate limit" in summary_text.lower() or "429" in summary_text.lower()):
                         retry_after = self._parse_retry_after_seconds_from_error_text(summary_text)
@@ -253,8 +276,12 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     genai.configure(api_key=self.api_key)
                     self.model = genai.GenerativeModel("models/gemini-2.5-pro")
                     response = self.model.generate_content(prompt)
-                    return self._extract_text(response)
+                    text = self._extract_text(response)
+                    if isinstance(text, str):
+                        self.log(f"Gemini final fallback response length={len(text)} preview={text[:160]!r}")
+                    return text
                 except Exception as e:
+                    self.log(f"Gemini final fallback error masked_key={self._mask_key(self.api_key)} err={e}")
                     return f"❌ Gemini error (final fallback): {str(e)}"
             return "All Gemini keys are temporarily unavailable. Please try again later."
 
