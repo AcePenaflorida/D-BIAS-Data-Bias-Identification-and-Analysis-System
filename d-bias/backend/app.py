@@ -617,22 +617,13 @@ def latest_analysis():
     """
     path = get_cache_file()
     if not os.path.exists(path):
-        # Graceful fallback: return a 200 with a typed status so frontend can handle softly
-        return jsonify({
-            "status": "empty_cache",
-            "message": "No cached analysis found. Upload a dataset and run analysis first.",
-            "path": path,
-        }), 200
+        return jsonify({"error": f"cached analysis not found at {path}"}), 404
 
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
-        return jsonify({
-            "status": "cache_read_error",
-            "error": f"failed to read cached analysis: {e}",
-            "path": path,
-        }), 500
+        return jsonify({"error": f"failed to read cached analysis: {e}"}), 500
 
     return jsonify(make_json_serializable(data)), 200
 

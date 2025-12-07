@@ -147,6 +147,20 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
 **Important:** Even if a bias appears repetitive, minor or non-existent, provide a complete entry for its [bias_id] with a clear note that no significant issue is detected. This ensures consistent mapping for frontend display.
 """
 
+<<<<<<< HEAD
+=======
+        # Lightweight context logging for observability
+        try:
+            bias_count = len(bias_report) if hasattr(bias_report, "__len__") else "unknown"
+        except Exception:
+            bias_count = "unknown"
+        self.log(
+            f"summarize_biases start dataset={dataset_name} biases={bias_count} "
+            f"shape={shape} excluded={excluded_columns} multi_key={use_multi_key}"
+        )
+        self.log(f"prompt_length={len(prompt)} chars")
+
+>>>>>>> parent of 94027ef (feat: Improve error handling in latest_analysis and GeminiConnector; implement graceful fallbacks and enhanced logging for model selection)
         if not use_multi_key:
             if not self.api_key:
                 raise ValueError("❌ Gemini API key not found.")
@@ -193,6 +207,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                         if retry_after is None:
                             retry_after = 20
                         self.key_manager.handle_rate_limit(key, retry_after)
+<<<<<<< HEAD
                         attempt += 1
                         jitter = random.uniform(0.5, 2.0)
                         self.log(f"Retrying with next key after {retry_after + jitter}s (attempt {attempt})")
@@ -203,6 +218,26 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 except Exception as e:
                     self.log(f"Gemini call failed for key {key['id']}: {e}")
                     attempt += 1
+=======
+                        jitter = random.uniform(0.5, 2.0)
+                        self.log(
+                            f"Rate-limit signal in response; retry_after={retry_after}s jitter={round(jitter,2)}s "
+                            f"attempt={attempt}/{max_retries}"
+                        )
+                        time.sleep(jitter)
+                        continue
+                    if not summary_text:
+                        self.log("Gemini returned empty summary text (multi-key)")
+                    else:
+                        self.log(f"Gemini summary success with key {key.get('id')} length={len(summary_text)}")
+                    return summary_text
+                except Exception as e:
+                    self.log(f"Gemini call failed for key {key.get('id')}: {e}")
+                    try:
+                        self.key_manager.handle_rate_limit(key, retry_after=20)
+                    except Exception:
+                        pass
+>>>>>>> parent of 94027ef (feat: Improve error handling in latest_analysis and GeminiConnector; implement graceful fallbacks and enhanced logging for model selection)
                     continue
             self.log("All Gemini keys failed or rate-limited after retries")
             return "All Gemini keys are temporarily unavailable. Please try again later."
