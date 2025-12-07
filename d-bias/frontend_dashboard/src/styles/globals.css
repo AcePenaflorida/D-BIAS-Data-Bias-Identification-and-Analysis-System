@@ -290,9 +290,10 @@
       background-color: #d8dade !important;
     }
 
+    /* Copy button hover effects */
     .copy-button:hover {
       background-color: #e5e7eb !important;
-      color: #334155 !important; /* text-slate-700 */
+      text-slate-700 !important;
     }
 
     .copy-button:active {
@@ -305,11 +306,11 @@
     }
 
     .continue-button:hover {
-      background-color: #464647 !important;
+      background-color: #eef0f3 !important;
     }
 
     .continue-button:active {
-      background-color: #4e4f4f !important;
+      background-color: #e1e4e8 !important;
     }
 
     /* Back button hover effects */
