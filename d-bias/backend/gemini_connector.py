@@ -192,13 +192,21 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
         )
         self.log(f"prompt_length={len(prompt)} chars")
 
+        preferred_model = os.getenv("GEMINI_MODEL", "models/gemini-3.0-pro")
+        fallback_model = "models/gemini-2.5-pro"
+
         if not use_multi_key:
             if not self.api_key:
                 self.log("single-key mode requested but api_key missing")
                 raise ValueError("❌ Gemini API key not found.")
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel("models/gemini-2.5-pro")
             try:
+                try:
+                    self.model = genai.GenerativeModel(preferred_model)
+                    self.log(f"Using preferred Gemini model (single-key): {preferred_model}")
+                except Exception as model_err:
+                    self.log(f"Preferred model {preferred_model} failed: {model_err}; falling back to {fallback_model}")
+                    self.model = genai.GenerativeModel(fallback_model)
                 response = self.model.generate_content(prompt)
                 self.log("Gemini response received (single key)")
                 summary_text = self._extract_text(response)
@@ -232,8 +240,13 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     self.log(f"Key object missing api_key field: {key}")
                     continue
                 genai.configure(api_key=gemini_key)
-                self.model = genai.GenerativeModel("models/gemini-2.5-pro")
                 try:
+                    try:
+                        self.model = genai.GenerativeModel(preferred_model)
+                        self.log(f"Using preferred Gemini model: {preferred_model}")
+                    except Exception as model_err:
+                        self.log(f"Preferred model {preferred_model} failed: {model_err}; falling back to {fallback_model}")
+                        self.model = genai.GenerativeModel(fallback_model)
                     # Check cancellation immediately before making the external call
                     if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
                         self.log("Gemini summarize canceled by request (pre-call)")
@@ -243,18 +256,21 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     self.log(f"Gemini response received (key {key.get('id')})")
                     summary_text = self._extract_text(response)
                     # Check for rate-limit in output
-                    if isinstance(summary_text, str) and ("rate limit" in summary_text.lower() or "429" in summary_text.lower()):
-                        retry_after = self._parse_retry_after_seconds_from_error_text(summary_text)
-                        if retry_after is None:
-                            retry_after = 20
-                        self.key_manager.handle_rate_limit(key, retry_after)
-                        jitter = random.uniform(0.5, 2.0)
-                        self.log(
-                            f"Rate-limit signal in response; retry_after={retry_after}s jitter={round(jitter,2)}s "
-                            f"attempt={attempt}/{max_retries}"
-                        )
-                        time.sleep(jitter)
-                        continue
+                    if isinstance(summary_text, str):
+                        lower = summary_text.lower()
+                        if ("rate limit" in lower) or ("429" in lower) or ("quota exceeded" in lower) or ("limit: 0" in lower):
+                            retry_after = self._parse_retry_after_seconds_from_error_text(summary_text)
+                            if retry_after is None:
+                                # If the key shows limit: 0 (free-tier exhausted), back off longer to avoid thrash.
+                                retry_after = 900 if "limit: 0" in lower else 20
+                            self.key_manager.handle_rate_limit(key, retry_after)
+                            jitter = random.uniform(0.5, 2.0)
+                            self.log(
+                                f"Rate-limit/quota signal in response; retry_after={retry_after}s jitter={round(jitter,2)}s "
+                                f"attempt={attempt}/{max_retries}"
+                            )
+                            time.sleep(jitter)
+                            continue
                     if not summary_text:
                         self.log("Gemini returned empty summary text (multi-key)")
                     else:
@@ -263,8 +279,11 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 except Exception as e:
                     self.log(f"Gemini call failed for key {key.get('id')}: {e}")
                     try:
-                        self.key_manager.handle_rate_limit(key, retry_after=20)
+                        # If quota exhausted (limit: 0), back off longer to let daily limits reset
+                        backoff = 900 if "limit: 0" in str(e).lower() else 20
+                        self.key_manager.handle_rate_limit(key, retry_after=backoff)
                     except Exception:
+                        # best effort; ignore if handler fails
                         pass
                     continue
             self.log("All Gemini keys failed or rate-limited after retries")
@@ -274,13 +293,13 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
         if not text:
             return None
         import re
-        m = re.search(r"retry_delay\\s*\\{[^}]*seconds\\s*:\\s*(\\d+)", text, re.IGNORECASE | re.DOTALL)
+        m = re.search(r"retry_delay\s*\{[^}]*seconds\s*:\s*(\d+)", text, re.IGNORECASE | re.DOTALL)
         if m:
             try:
                 return int(m.group(1))
             except Exception:
                 pass
-        m = re.search(r"Please\\s+retry\\s+in\\s+([0-9]+(?:\\.[0-9]+)?)s", text, re.IGNORECASE)
+        m = re.search(r"Please\s+retry\s+in\s+([0-9]+(?:\.[0-9]+)?)s", text, re.IGNORECASE)
         if m:
             try:
                 secs = float(m.group(1))
