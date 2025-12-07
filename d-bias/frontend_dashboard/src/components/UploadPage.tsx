@@ -614,7 +614,7 @@ export function UploadPage({
                       className="hidden"
                     />
                   </div>
-                  <p className="text-slate-500 text-sm">Supported formats: CSV</p>
+                  <p className="text-slate-500 text-sm">Supported format: CSV</p>
                 </div>
               </div>
 

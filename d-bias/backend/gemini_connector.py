@@ -60,8 +60,13 @@ class GeminiConnector:
         self.log = log or (lambda msg: print(f"[GeminiConnector] {msg}"))
         self.cancel_requested = lambda: False
 
-        if not api_key:
-            self.log("No API key provided. Gemini is disabled.")
+        # In multi-key mode we expect key_manager; allow init without api_key in that case.
+        if not api_key and not key_manager:
+            self.log("No API key or key manager provided. Gemini is disabled.")
+            self.model = None
+            return
+        if not api_key and key_manager:
+            self.log("Initialized in multi-key mode (api_key not provided; will pull from key manager).")
             self.model = None
             return
 
@@ -176,8 +181,20 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
 **Important:** Even if a bias appears repetitive, minor or non-existent, provide a complete entry for its [bias_id] with a clear note that no significant issue is detected. This ensures consistent mapping for frontend display.
 """
 
+        # Lightweight context logging for observability
+        try:
+            bias_count = len(bias_report) if hasattr(bias_report, "__len__") else "unknown"
+        except Exception:
+            bias_count = "unknown"
+        self.log(
+            f"summarize_biases start dataset={dataset_name} biases={bias_count} "
+            f"shape={shape} excluded={excluded_columns} multi_key={use_multi_key}"
+        )
+        self.log(f"prompt_length={len(prompt)} chars")
+
         if not use_multi_key:
             if not self.api_key:
+                self.log("single-key mode requested but api_key missing")
                 raise ValueError("❌ Gemini API key not found.")
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel("models/gemini-2.5-pro")
@@ -185,15 +202,20 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 response = self.model.generate_content(prompt)
                 self.log("Gemini response received (single key)")
                 summary_text = self._extract_text(response)
+                if not summary_text:
+                    self.log("Gemini returned empty summary text (single key)")
                 return summary_text or "⚠️ Gemini returned no summary text."
             except Exception as e:
+                self.log(f"Gemini single-key error: {e}")
                 return f"❌ Gemini error: {str(e)}"
         else:
             # Multi-key rotation logic
             if not self.key_manager:
+                self.log("multi-key mode requested but key_manager missing")
                 raise ValueError("GeminiKeyManager required for multi-key usage.")
             attempt = 0
             while attempt < max_retries:
+                attempt += 1
                 # Respect cooperative cancellation if requested by caller
                 try:
                     if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
@@ -203,9 +225,12 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     pass
                 key = self.key_manager.get_next_key()
                 if not key:
-                    self.log("All Gemini keys on cooldown, cannot proceed")
+                    self.log("All Gemini keys on cooldown or unavailable; aborting")
                     return "All Gemini keys are temporarily rate-limited. Please try again later."
-                gemini_key = key["api_key"]
+                gemini_key = key.get("api_key")
+                if not gemini_key:
+                    self.log(f"Key object missing api_key field: {key}")
+                    continue
                 genai.configure(api_key=gemini_key)
                 self.model = genai.GenerativeModel("models/gemini-2.5-pro")
                 try:
@@ -213,8 +238,9 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
                         self.log("Gemini summarize canceled by request (pre-call)")
                         return "Analysis canceled by user."
+                    self.log(f"Gemini call attempt={attempt}/{max_retries} using key_id={key.get('id')} label={key.get('label')}")
                     response = self.model.generate_content(prompt)
-                    self.log(f"Gemini response received (key {key['id']})")
+                    self.log(f"Gemini response received (key {key.get('id')})")
                     summary_text = self._extract_text(response)
                     # Check for rate-limit in output
                     if isinstance(summary_text, str) and ("rate limit" in summary_text.lower() or "429" in summary_text.lower()):
@@ -222,16 +248,24 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                         if retry_after is None:
                             retry_after = 20
                         self.key_manager.handle_rate_limit(key, retry_after)
-                        attempt += 1
                         jitter = random.uniform(0.5, 2.0)
-                        self.log(f"Retrying with next key after {retry_after + jitter}s (attempt {attempt})")
+                        self.log(
+                            f"Rate-limit signal in response; retry_after={retry_after}s jitter={round(jitter,2)}s "
+                            f"attempt={attempt}/{max_retries}"
+                        )
                         time.sleep(jitter)
                         continue
-                    self.log(f"Gemini summary success with key {key['id']}")
+                    if not summary_text:
+                        self.log("Gemini returned empty summary text (multi-key)")
+                    else:
+                        self.log(f"Gemini summary success with key {key.get('id')} length={len(summary_text)}")
                     return summary_text
                 except Exception as e:
-                    self.log(f"Gemini call failed for key {key['id']}: {e}")
-                    attempt += 1
+                    self.log(f"Gemini call failed for key {key.get('id')}: {e}")
+                    try:
+                        self.key_manager.handle_rate_limit(key, retry_after=20)
+                    except Exception:
+                        pass
                     continue
             self.log("All Gemini keys failed or rate-limited after retries")
             return "All Gemini keys are temporarily unavailable. Please try again later."
