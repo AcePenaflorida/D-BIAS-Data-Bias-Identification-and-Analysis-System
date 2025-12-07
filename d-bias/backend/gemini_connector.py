@@ -2,7 +2,7 @@ import json
 import os
 import time
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from supabase import create_client, Client
 from google import generativeai as genai
 
@@ -29,18 +29,12 @@ class GeminiKeyManager:
                 v = v + ":00"
             if v.endswith("Z"):
                 v = v.replace("Z", "+00:00")
-            dt = datetime.fromisoformat(v)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
+            return datetime.fromisoformat(v)
         except Exception:
             return None
 
-    def _now_utc(self):
-        return datetime.now(timezone.utc)
-
     def fetch_active_keys(self):
-        now = self._now_utc().isoformat()
+        now = datetime.utcnow().isoformat()
         response = self.supabase.table("gemini_api_keys").select("*").eq("is_active", True).or_(
             f"cooldown_until.is.null,cooldown_until.lt.{now}"
         ).execute()
@@ -55,8 +49,7 @@ class GeminiKeyManager:
         for key in sorted_keys:
             key_id = key["id"]
             cooldown_until = self._parse_dt(key.get("cooldown_until"))
-            now = self._now_utc()
-            if (not cooldown_until) or (cooldown_until < now):
+            if not cooldown_until or cooldown_until < datetime.utcnow():
                 self.last_used[key_id] = time.time()
                 self.log(f"Using Gemini key: {key_id} ({key.get('label', '')})")
                 return key
@@ -65,7 +58,7 @@ class GeminiKeyManager:
 
     def available_keys(self):
         """Return keys that are active and not on cooldown (no quota check)."""
-        now = self._now_utc()
+        now = datetime.utcnow()
         self.fetch_active_keys()
         usable = []
         for key in self.keys:
@@ -108,7 +101,7 @@ class GeminiKeyManager:
             return False
 
     def set_cooldown(self, key_id, seconds):
-        until = self._now_utc() + timedelta(seconds=seconds)
+        until = datetime.utcnow() + timedelta(seconds=seconds)
         self.supabase.table("gemini_api_keys").update({"cooldown_until": until.isoformat()}).eq("id", key_id).execute()
         self.log(f"Set cooldown for key {key_id} for {seconds}s (until {until.isoformat()})")
 
