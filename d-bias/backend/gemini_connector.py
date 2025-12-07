@@ -17,6 +17,22 @@ class GeminiKeyManager:
         self.last_used = {}
         self.log = log or (lambda msg: print(f"[GeminiKeyManager] {msg}"))
 
+    def _parse_dt(self, value):
+        """Parse ISO timestamp safely, handling 'Z' and timezone offsets."""
+        if not value:
+            return None
+        try:
+            # Normalize: replace space with 'T', fix '+00' to '+00:00', and handle trailing 'Z'
+            v = str(value).strip()
+            v = v.replace(" ", "T")
+            if v.endswith("+00"):
+                v = v + ":00"
+            if v.endswith("Z"):
+                v = v.replace("Z", "+00:00")
+            return datetime.fromisoformat(v)
+        except Exception:
+            return None
+
     def fetch_active_keys(self):
         now = datetime.utcnow().isoformat()
         response = self.supabase.table("gemini_api_keys").select("*").eq("is_active", True).or_(
@@ -32,8 +48,8 @@ class GeminiKeyManager:
         sorted_keys = sorted(self.keys, key=lambda k: self.last_used.get(k["id"], 0))
         for key in sorted_keys:
             key_id = key["id"]
-            cooldown_until = key.get("cooldown_until")
-            if not cooldown_until or datetime.fromisoformat(cooldown_until) < datetime.utcnow():
+            cooldown_until = self._parse_dt(key.get("cooldown_until"))
+            if not cooldown_until or cooldown_until < datetime.utcnow():
                 self.last_used[key_id] = time.time()
                 self.log(f"Using Gemini key: {key_id} ({key.get('label', '')})")
                 return key
@@ -46,16 +62,9 @@ class GeminiKeyManager:
         self.fetch_active_keys()
         usable = []
         for key in self.keys:
-            cooldown_until = key.get("cooldown_until")
-            if not cooldown_until:
+            cooldown_until = self._parse_dt(key.get("cooldown_until"))
+            if (not cooldown_until) or (cooldown_until < now):
                 usable.append(key)
-                continue
-            try:
-                if datetime.fromisoformat(cooldown_until) < now:
-                    usable.append(key)
-            except Exception:
-                # If cooldown is malformed, skip it
-                continue
         self.log(f"Available keys (not on cooldown): {len(usable)}/{len(self.keys)}")
         return usable
 
