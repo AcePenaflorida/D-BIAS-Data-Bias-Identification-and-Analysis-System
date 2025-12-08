@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 from supabase import create_client, Client
 from google import generativeai as genai
 
+# Default Gemini model preference
+DEFAULT_GEMINI_MODEL = "models/gemini-2.5-flash"
+
 # --- GeminiKeyManager for Supabase key rotation ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -83,10 +86,12 @@ class GeminiConnector:
 
         # Ordered fallback list (most capable → least capable)
         MODEL_CANDIDATES = [
+            DEFAULT_GEMINI_MODEL,
+            "models/gemini-2.5-flash-live",
+            "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-pro",
             "models/gemini-3.0-pro",
             "models/gemini-3.0-flash",
-            "models/gemini-2.5-pro",
-            "models/gemini-2.5-flash",
             "models/gemini-2.0-flash",
         ]
 
@@ -194,7 +199,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 raise ValueError("❌ Gemini API key not found.")
             self.log(f"Gemini single-key mode using masked={self._mask_key(self.api_key)}")
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+            self.model = genai.GenerativeModel(DEFAULT_GEMINI_MODEL)
             try:
                 response = self.model.generate_content(prompt)
                 self.log("Gemini response received (single key)")
@@ -224,7 +229,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                     if self.api_key:
                         self.log("All rotation keys unavailable; falling back to single GEMINI_API_KEY.")
                         genai.configure(api_key=self.api_key)
-                        self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+                        self.model = genai.GenerativeModel(DEFAULT_GEMINI_MODEL)
                         try:
                             response = self.model.generate_content(prompt)
                             self.log("Gemini response received (fallback single key)")
@@ -240,7 +245,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 gemini_key = key["api_key"]
                 self.log(f"Gemini multi-key using id={key.get('id')} label={key.get('label','')} masked={self._mask_key(gemini_key)} attempt={attempt+1}/{max_retries}")
                 genai.configure(api_key=gemini_key)
-                self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+                self.model = genai.GenerativeModel(DEFAULT_GEMINI_MODEL)
                 try:
                     # Check cancellation immediately before making the external call
                     if callable(getattr(self, "cancel_requested", None)) and self.cancel_requested():
@@ -274,7 +279,7 @@ Write your explanation in a **bias-by-bias format**, strictly mapping each expla
                 try:
                     self.log("Retries exhausted; attempting fallback single GEMINI_API_KEY.")
                     genai.configure(api_key=self.api_key)
-                    self.model = genai.GenerativeModel("models/gemini-2.5-pro")
+                    self.model = genai.GenerativeModel(DEFAULT_GEMINI_MODEL)
                     response = self.model.generate_content(prompt)
                     text = self._extract_text(response)
                     if isinstance(text, str):
