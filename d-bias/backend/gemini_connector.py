@@ -8,7 +8,7 @@ from supabase import create_client, Client
 from google import generativeai as genai
 
 # Default Gemini model preference
-DEFAULT_GEMINI_MODEL = "models/gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = os.getenv("DEFAULT_GEMINI_MODEL", "models/gemini-2.5-flash-live")
 
 # --- GeminiKeyManager for Supabase key rotation ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -87,7 +87,7 @@ class GeminiConnector:
         # Ordered fallback list (most capable → least capable)
         MODEL_CANDIDATES = [
             DEFAULT_GEMINI_MODEL,
-            "models/gemini-2.5-flash-live",
+            "models/gemini-2.0-flash-live",
             "models/gemini-2.5-flash-lite",
             "models/gemini-2.5-pro",
             "models/gemini-3.0-pro",
