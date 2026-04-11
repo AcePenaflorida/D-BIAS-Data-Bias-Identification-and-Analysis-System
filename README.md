@@ -2,9 +2,6 @@
 	<img src="https://raw.githubusercontent.com/AcePenaflorida/D-BIAS-Data-Bias-Identification-and-Analysis-System/main/d-bias/frontend_dashboard/src/assets/logo_ver11.png" alt="D-BIAS Logo" width="180"/>
 </p>
 
-<p align="center">
-	🚀 <a href="https://d-bias-data-bias-identification-and.vercel.app/"><strong>Live Application</strong></a>
-</p>
 
 # Data Bias Identification and Analysis System
 
